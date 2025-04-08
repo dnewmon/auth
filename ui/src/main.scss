@@ -1,0 +1,168 @@
+@use "sass:math";
+
+$bootstrap-icons-font-dir: "/fonts";
+// $font-family-sans-serif: Nunito, sans-serif;
+
+// scss-docs-start theme-color-variables
+// $primary:       #008ee0;
+// $secondary:     #61727d;
+// $success:       #6b9d50;
+// $info:          #3980aa;
+// $warning:       #ffb200;
+// $danger:        #ff0009;
+// $light:         #dae3e8;
+// $dark:          #003350;
+
+$min-contrast-ratio: 3;
+
+// scss-docs-end theme-color-variables
+
+@import "../node_modules/bootstrap/scss/bootstrap.scss";
+@import "../node_modules/bootstrap-icons/font/bootstrap-icons.scss";
+
+.interactive {
+    cursor: pointer;
+    user-select: none;
+}
+
+.d-grid {
+    display: grid;
+}
+
+$flex-gaps: (
+    1: 0.25rem,
+    2: 0.5rem,
+    3: 1rem,
+    4: 1.5rem,
+    5: 3rem,
+);
+
+@each $key, $value in $flex-gaps {
+    .flex-gap-#{$key} {
+        gap: $value;
+    }
+
+    .grid-gap-#{$key} {
+        grid-gap: $value;
+    }
+}
+
+@each $x in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) {
+    .grid-cols-#{$x} {
+        grid-template-columns: repeat($x, 1fr);
+    }
+
+    .grid-col-#{$x} {
+        grid-column: $x;
+    }
+}
+
+@each $type in ("start", "center", "end", "stretch") {
+    .justify-self-#{$type} {
+        justify-self: $type;
+    }
+}
+
+.white-space-pre {
+    white-space: pre;
+}
+
+.kb-container {
+    font-size: 1.2rem;
+
+    p {
+        margin-bottom: 1rem;
+    }
+}
+
+$i: 40;
+@while $i <= 300 {
+    .rfs-#{$i} {
+        font-size: #{math.div($i, 100)}rem;
+    }
+    $i: $i + 2;
+}
+
+@each $x in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) {
+    .rcol-#{$x} {
+        width: math.div(1320px, 12) * $x;
+    }
+
+    .rcol-max-#{$x} {
+        max-width: math.div(1320px, 12) * $x;
+    }
+}
+
+.text-primary-alt {
+    color: shade-color($primary, 30%) !important;
+}
+.text-secondary-alt {
+    color: shade-color($secondary, 30%) !important;
+}
+.text-success-alt {
+    color: shade-color($success, 30%) !important;
+}
+.text-info-alt {
+    color: shade-color($info, 30%) !important;
+}
+.text-warning-alt {
+    color: shade-color($warning, 30%) !important;
+}
+.text-danger-alt {
+    color: shade-color($danger, 30%) !important;
+}
+.text-light-alt {
+    color: shade-color($light, 30%) !important;
+}
+.text-dark-alt {
+    color: shade-color($dark, 30%) !important;
+}
+
+.bg-primary-alt {
+    background-color: shade-color($primary, 30%) !important;
+}
+.bg-secondary-alt {
+    background-color: shade-color($secondary, 30%) !important;
+}
+.bg-success-alt {
+    background-color: shade-color($success, 30%) !important;
+}
+.bg-info-alt {
+    background-color: shade-color($info, 30%) !important;
+}
+.bg-warning-alt {
+    background-color: shade-color($warning, 30%) !important;
+}
+.bg-danger-alt {
+    background-color: shade-color($danger, 30%) !important;
+}
+.bg-light-alt {
+    background-color: shade-color($light, 30%) !important;
+}
+.bg-dark-alt {
+    background-color: shade-color($dark, 30%) !important;
+}
+
+@include media-breakpoint-down(lg) {
+    :root,
+    [data-bs-theme="light"],
+    [data-bs-theme="dark"] {
+        font-size: 13px;
+    }
+}
+
+@include media-breakpoint-down(md) {
+    :root,
+    [data-bs-theme="light"],
+    [data-bs-theme="dark"] {
+        font-size: 12px;
+    }
+}
+
+@include media-breakpoint-down(sm) {
+    :root,
+    [data-bs-theme="light"],
+    [data-bs-theme="dark"] {
+        font-size: 11px;
+    }
+}

@@ -1,0 +1,6 @@
+.env
+**/__pycache__/**
+**/package-lock.json
+**/node_modules/**
+instance/*.db
+**/*.pyc

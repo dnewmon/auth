@@ -1,0 +1,15 @@
+Flask
+Flask-Login
+Flask-Mail
+Flask-Migrate
+Flask-JWT-Extended
+Flask-Limiter
+SQLAlchemy
+pyotp
+qrcode
+email-validator
+Pillow  # Required by qrcode
+cryptography
+pydantic
+dotenv
+argon2-cffi
