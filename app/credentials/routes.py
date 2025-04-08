@@ -134,7 +134,7 @@ def list_credentials():
     if category:
         query = query.filter_by(category=category)
 
-    user_creds = query.order_by(Credential.service_name).all()
+    user_creds = query.order_by(Credential.category).order_by(Credential.service_name).all()
 
     return jsonify(
         [

@@ -14,9 +14,8 @@ from ..models.password_reset_token import PasswordResetToken
 from .responses import success_response, error_response
 from .email import send_email
 from ..models.credential import Credential
-from .encryption import derive_key, decrypt_data
+from .encryption import derive_key, decrypt_data, encrypt_data
 from .. import limiter
-from ..credentials.routes import require_master_password, MASTER_PASSWORD_SESSION_KEY
 from ..models.config import get_config_value
 
 
@@ -178,3 +177,55 @@ def export_credentials():
     except Exception as e:
         current_app.logger.error(f"Error during credential export: {e}", exc_info=True)
         return error_response("Failed to export credentials.", 500)
+
+
+@utils_bp.route("/import", methods=["POST"])
+@login_required
+@limiter.limit("3 per hour")
+def import_credentials():
+    """
+    Imports credentials from a JSON or CSV file.
+    Expects credentials array and master_password in JSON body.
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("Request data is required.", 400)
+
+    if not data.get("master_password"):
+        return error_response("Master password is required.", 400)
+
+    if not data.get("credentials"):
+        return error_response("Credentials data is required.", 400)
+
+    try:
+        # Get encryption key from master password
+        encryption_key = derive_key(data["master_password"], current_user.encryption_salt)
+
+        # Process each credential
+        for cred_data in data["credentials"]:
+            # Create new credential
+            credential = Credential(
+                user_id=current_user.id,
+                service_name=cred_data.get("service_name", ""),
+                service_url=cred_data.get("service_url"),
+                username=cred_data.get("username", ""),
+                category=cred_data.get("category"),
+                notes=cred_data.get("notes"),
+            )
+
+            # Encrypt and store the password
+
+            if "password" in cred_data and cred_data.get("password") is not None:
+                credential.encrypted_password = encrypt_data(encryption_key, cred_data["password"])
+            else:
+                credential.encrypted_password = encrypt_data(encryption_key, "")
+
+            db.session.add(credential)
+
+        db.session.commit()
+        return success_response("Credentials imported successfully.")
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during credential import: {e}", exc_info=True)
+        return error_response("Failed to import credentials.", 500)

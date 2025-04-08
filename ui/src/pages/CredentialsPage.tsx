@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { Container, Table, Button, Form, Row, Col, Pagination, Spinner, Card } from "react-bootstrap";
-import { CredentialsService, Credential, CredentialRequest, MasterVerificationStatus } from "../services/CredentialsService";
+import { CredentialsService, Credential, CredentialRequest, MasterVerificationStatus, ImportData } from "../services/CredentialsService";
 import { useApi, ApiErrorFallback, ApiSuspense, useDebouncedEffect, ApiState, useTimer } from "../react-utilities";
 import { CredentialModal } from "../components/CredentialModal";
 import { MasterPasswordModal } from "../components/MasterPasswordModal";
 import { DeleteConfirmationModal } from "../components/DeleteConfirmationModal";
-import { Lock, Unlock, Eye, Pencil, Trash, BoxArrowRight, Download } from "react-bootstrap-icons";
+import { ImportModal } from "../components/ImportModal";
+import { Lock, Unlock, Eye, Pencil, Trash, BoxArrowRight, Download, Upload } from "react-bootstrap-icons";
 import { AuthService } from "../services/AuthService";
 import { SiteNavigator } from "../routes";
 import { useAppContext } from "../AppContext";
-import { UtilsService } from "../services/UtilsService";
+import { UtilsService, ImportCredentialsRequest } from "../services/UtilsService";
 
-const ITEMS_PER_PAGE = 50;
+const ITEMS_PER_PAGE = 15;
 
 export const CredentialsPage: React.FC = () => {
     const nav = new SiteNavigator();
@@ -25,6 +26,7 @@ export const CredentialsPage: React.FC = () => {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [credentialToDelete, setCredentialToDelete] = useState<Credential | undefined>();
     const [masterPasswordModalMode, setMasterPasswordModalMode] = useState<"verify" | "export">("verify");
+    const [showImportModal, setShowImportModal] = useState(false);
 
     // Load credentials
     const [loadCredentials, credentials, loadState, loadError] = useApi(async () => {
@@ -139,6 +141,15 @@ export const CredentialsPage: React.FC = () => {
         document.body.removeChild(a);
     });
 
+    // Import credentials
+    const [handleImport, , importState, importError] = useApi(async (data: ImportCredentialsRequest) => {
+        await UtilsService.importCredentials({
+            ...data,
+            master_password: masterPassword,
+        });
+        loadCredentials(); // Reload the list
+    });
+
     // Modal handlers
     const handleOpenCreate = () => {
         if (!verificationStatus.verified) {
@@ -232,7 +243,7 @@ export const CredentialsPage: React.FC = () => {
 
     return (
         <Container>
-            <ApiErrorFallback api_error={loadError || deleteError || createError || updateError || exportError} />
+            <ApiErrorFallback api_error={loadError || deleteError || createError || updateError || exportError || importError} />
 
             <Row className="mb-4 align-items-center">
                 <Col>
@@ -250,9 +261,13 @@ export const CredentialsPage: React.FC = () => {
                         {verificationStatus.verified ? <Unlock className="me-1" /> : <Lock className="me-1" />}
                         {verificationStatus.verified ? "Unlocked" : "Locked"}
                     </Button>
-                    <Button variant="outline-primary" onClick={handleExportClick} disabled={!verificationStatus.verified}>
+                    <Button variant="outline-primary" onClick={handleExportClick} disabled={!verificationStatus.verified} className="me-2">
                         <Download className="me-1" />
                         Export
+                    </Button>
+                    <Button variant="outline-primary" onClick={() => setShowImportModal(true)} disabled={!verificationStatus.verified}>
+                        <Upload className="me-1" />
+                        Import
                     </Button>
                 </Col>
             </Row>
@@ -370,6 +385,9 @@ export const CredentialsPage: React.FC = () => {
                     itemName={credentialToDelete.service_name}
                 />
             )}
+
+            {/* Import Modal */}
+            <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleImport} />
         </Container>
     );
 };

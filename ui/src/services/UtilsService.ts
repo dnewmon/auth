@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Credential } from "./CredentialsService";
 
 export interface ForgotPasswordRequest {
     email: string;
@@ -10,6 +11,11 @@ export interface ResetPasswordRequest {
 
 export interface ExportCredentialsRequest {
     export_password: string;
+    master_password: string;
+}
+
+export interface ImportCredentialsRequest {
+    credentials: Credential[];
     master_password: string;
 }
 
@@ -31,5 +37,10 @@ export class UtilsService {
             responseType: "blob",
         });
         return response.data;
+    }
+
+    static async importCredentials(request: ImportCredentialsRequest): Promise<{ message: string }> {
+        const response = await axios.post(`${this.BASE_URL}/import`, request);
+        return response.data.data;
     }
 }
