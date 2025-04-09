@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from "react";
-import { Container, Table, Button, Form, Row, Col, Pagination, Spinner, Card } from "react-bootstrap";
-import { CredentialsService, Credential, CredentialRequest, MasterVerificationStatus, ImportData } from "../services/CredentialsService";
+import React, { useState } from "react";
+import { Container, Table, Button, Form, Row, Col, Pagination, Spinner } from "react-bootstrap";
+import { CredentialsService, Credential, CredentialRequest, MasterVerificationStatus } from "../services/CredentialsService";
 import { useApi, ApiErrorFallback, ApiSuspense, useDebouncedEffect, ApiState, useTimer } from "../react-utilities";
 import { CredentialModal } from "../components/CredentialModal";
 import { MasterPasswordModal } from "../components/MasterPasswordModal";
 import { DeleteConfirmationModal } from "../components/DeleteConfirmationModal";
 import { ImportModal } from "../components/ImportModal";
-import { Lock, Unlock, Eye, Pencil, Trash, BoxArrowRight, Download, Upload } from "react-bootstrap-icons";
-import { AuthService } from "../services/AuthService";
+import { Lock, Unlock, Eye, Pencil, Trash, Download, Upload } from "react-bootstrap-icons";
 import { SiteNavigator } from "../routes";
 import { useAppContext } from "../AppContext";
 import { UtilsService, ImportCredentialsRequest } from "../services/UtilsService";
@@ -15,7 +14,6 @@ import { UtilsService, ImportCredentialsRequest } from "../services/UtilsService
 const ITEMS_PER_PAGE = 15;
 
 export const CredentialsPage: React.FC = () => {
-    const nav = new SiteNavigator();
     const { masterPassword, setMasterPassword, verificationStatus, setVerificationStatus } = useAppContext();
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
@@ -120,12 +118,6 @@ export const CredentialsPage: React.FC = () => {
         return cancel_verification_timer;
     }, [verificationStatus.expires_at]);
 
-    // Handle logout
-    const [handleLogout] = useApi(async () => {
-        await AuthService.logout();
-        nav.go_home();
-    });
-
     // Export credentials
     const [handleExport, , exportState, exportError] = useApi(async (exportPassword: string) => {
         const blob = await UtilsService.exportCredentials({ master_password: masterPassword, export_password: exportPassword });
@@ -149,6 +141,11 @@ export const CredentialsPage: React.FC = () => {
         });
         loadCredentials(); // Reload the list
     });
+
+    const handleSearchTermChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setSearchTerm(e.target.value);
+        setCurrentPage(1);
+    };
 
     // Modal handlers
     const handleOpenCreate = () => {
@@ -250,37 +247,77 @@ export const CredentialsPage: React.FC = () => {
                     <h2 className="mb-0">My Credentials</h2>
                 </Col>
                 <Col xs="auto">
-                    <Button
-                        variant={verificationStatus.verified ? "success" : "warning"}
-                        className="me-2"
-                        onClick={() => {
-                            setMasterPasswordModalMode("verify");
-                            setShowMasterPasswordModal(true);
-                        }}
+                    <ApiSuspense
+                        api_states={[loadState]}
+                        suspense={
+                            <Button variant="warning" disabled>
+                                <Spinner animation="border" size="sm" className="me-2" />
+                                Loading...
+                            </Button>
+                        }
                     >
-                        {verificationStatus.verified ? <Unlock className="me-1" /> : <Lock className="me-1" />}
-                        {verificationStatus.verified ? "Unlocked" : "Locked"}
-                    </Button>
-                    <Button variant="outline-primary" onClick={handleExportClick} disabled={!verificationStatus.verified} className="me-2">
-                        <Download className="me-1" />
-                        Export
-                    </Button>
-                    <Button variant="outline-primary" onClick={() => setShowImportModal(true)} disabled={!verificationStatus.verified}>
-                        <Upload className="me-1" />
-                        Import
-                    </Button>
+                        <Button
+                            variant={verificationStatus.verified ? "success" : "warning"}
+                            className="me-2"
+                            onClick={() => {
+                                setMasterPasswordModalMode("verify");
+                                setShowMasterPasswordModal(true);
+                            }}
+                        >
+                            {verificationStatus.verified ? <Unlock className="me-1" /> : <Lock className="me-1" />}
+                            {verificationStatus.verified ? "Unlocked" : "Locked"}
+                        </Button>
+                    </ApiSuspense>
+                    <ApiSuspense
+                        api_states={[loadState, exportState]}
+                        suspense={
+                            <Button variant="outline-primary" disabled className="me-2">
+                                <Spinner animation="border" size="sm" className="me-2" />
+                                Exporting...
+                            </Button>
+                        }
+                    >
+                        <Button variant="outline-primary" onClick={handleExportClick} disabled={!verificationStatus.verified || exportState === ApiState.Loading} className="me-2">
+                            <Download className="me-1" />
+                            Export
+                        </Button>
+                    </ApiSuspense>
+                    <ApiSuspense
+                        api_states={[loadState, importState]}
+                        suspense={
+                            <Button variant="outline-primary" disabled>
+                                <Spinner animation="border" size="sm" className="me-2" />
+                                Importing...
+                            </Button>
+                        }
+                    >
+                        <Button variant="outline-primary" onClick={() => setShowImportModal(true)} disabled={!verificationStatus.verified || importState === ApiState.Loading}>
+                            <Upload className="me-1" />
+                            Import
+                        </Button>
+                    </ApiSuspense>
                 </Col>
             </Row>
 
             {/* Search Bar */}
             <Row className="mb-4">
                 <Col md={6}>
-                    <Form.Control type="text" placeholder="Search credentials..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    <Form.Control type="text" placeholder="Search credentials..." value={searchTerm} onChange={handleSearchTermChange} />
                 </Col>
                 <Col md={6} className="text-end">
-                    <Button variant="primary" onClick={handleOpenCreate}>
-                        Add New Credential
-                    </Button>
+                    <ApiSuspense
+                        api_states={[loadState]}
+                        suspense={
+                            <Button variant="primary" disabled>
+                                <Spinner animation="border" size="sm" className="me-2" />
+                                Loading...
+                            </Button>
+                        }
+                    >
+                        <Button variant="primary" onClick={handleOpenCreate}>
+                            Add New Credential
+                        </Button>
+                    </ApiSuspense>
                 </Col>
             </Row>
 
@@ -289,6 +326,7 @@ export const CredentialsPage: React.FC = () => {
                 suspense={
                     <div className="text-center mt-4">
                         <Spinner animation="border" />
+                        <p className="mt-2">Loading credentials...</p>
                     </div>
                 }
             >
@@ -297,49 +335,75 @@ export const CredentialsPage: React.FC = () => {
                     <Table striped hover>
                         <thead>
                             <tr>
-                                <th className="d-lg-table-cell d-none">Category</th>
+                                <th className="d-xl-table-cell d-none">Category</th>
                                 <th>Service</th>
-                                <th className="d-lg-table-cell d-none">URL</th>
-                                <th>Username</th>
+                                <th className="d-xl-table-cell d-none">URL</th>
+                                <th className="d-md-table-cell d-none">Username</th>
                                 <th className="text-end">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {paginatedCredentials?.map((cred) => (
                                 <tr key={cred.id}>
-                                    <td className="d-lg-table-cell d-none">{cred.category || "-"}</td>
+                                    <td className="d-xl-table-cell d-none">{cred.category || "-"}</td>
                                     <td>{cred.service_name}</td>
-                                    <td className="d-lg-table-cell d-none">
+                                    <td className="d-xl-table-cell d-none text-truncate">
                                         {cred.service_url && (
                                             <a href={cred.service_url} target="_blank" rel="noopener noreferrer">
                                                 {cred.service_url}
                                             </a>
                                         )}
                                     </td>
-                                    <td>{cred.username}</td>
-                                    <td className="text-end">
-                                        <Button variant="outline-info" size="sm" className="me-2" onClick={() => handleOpenView(cred)} title="View">
-                                            <Eye />
-                                        </Button>
-                                        <Button variant="outline-warning" size="sm" className="me-2" onClick={() => handleOpenEdit(cred)} title="Edit">
-                                            <Pencil />
-                                        </Button>
-                                        <Button
-                                            variant="outline-danger"
-                                            size="sm"
-                                            onClick={() => handleDeleteClick(cred)}
-                                            disabled={deleteState === ApiState.Loading}
-                                            title="Delete"
+                                    <td className="d-md-table-cell d-none">{cred.username}</td>
+                                    <td className="text-nowrap text-end">
+                                        <ApiSuspense
+                                            api_states={[loadState]}
+                                            suspense={
+                                                <Button variant="outline-info" size="sm" className="me-2" disabled>
+                                                    <Spinner animation="border" size="sm" />
+                                                </Button>
+                                            }
                                         >
-                                            <Trash />
-                                        </Button>
+                                            <Button variant="outline-info" size="sm" className="me-2" onClick={() => handleOpenView(cred)} title="View">
+                                                <Eye />
+                                            </Button>
+                                        </ApiSuspense>
+                                        <ApiSuspense
+                                            api_states={[loadState]}
+                                            suspense={
+                                                <Button variant="outline-primary" size="sm" className="me-2" disabled>
+                                                    <Spinner animation="border" size="sm" />
+                                                </Button>
+                                            }
+                                        >
+                                            <Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleOpenEdit(cred)} title="Edit">
+                                                <Pencil />
+                                            </Button>
+                                        </ApiSuspense>
+                                        <ApiSuspense
+                                            api_states={[loadState, deleteState]}
+                                            suspense={
+                                                <Button variant="outline-danger" size="sm" disabled>
+                                                    <Spinner animation="border" size="sm" />
+                                                </Button>
+                                            }
+                                        >
+                                            <Button
+                                                variant="outline-danger"
+                                                size="sm"
+                                                onClick={() => handleDeleteClick(cred)}
+                                                disabled={deleteState === ApiState.Loading}
+                                                title="Delete"
+                                            >
+                                                <Trash />
+                                            </Button>
+                                        </ApiSuspense>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </Table>
                 </div>
-
                 {/* Pagination */}
                 {totalPages > 1 && (
                     <div className="d-flex justify-content-center mt-4">
@@ -347,11 +411,20 @@ export const CredentialsPage: React.FC = () => {
                             <Pagination.First onClick={() => setCurrentPage(1)} disabled={currentPage === 1} />
                             <Pagination.Prev onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} />
 
-                            {[...Array(totalPages)].map((_, idx) => (
-                                <Pagination.Item key={idx + 1} active={currentPage === idx + 1} onClick={() => setCurrentPage(idx + 1)}>
-                                    {idx + 1}
-                                </Pagination.Item>
-                            ))}
+                            {[...Array(totalPages)].map((_, idx) => {
+                                // Show current page and up to 3 pages before/after
+                                if (
+                                    idx + 1 === currentPage || // Current page
+                                    (idx + 1 >= currentPage - 3 && idx + 1 <= currentPage + 3) // 3 pages before/after
+                                ) {
+                                    return (
+                                        <Pagination.Item key={idx + 1} active={currentPage === idx + 1} onClick={() => setCurrentPage(idx + 1)}>
+                                            {idx + 1}
+                                        </Pagination.Item>
+                                    );
+                                }
+                                return null;
+                            })}
 
                             <Pagination.Next onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} />
                             <Pagination.Last onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} />
@@ -361,7 +434,19 @@ export const CredentialsPage: React.FC = () => {
             </ApiSuspense>
 
             {/* Credential Modal */}
-            <CredentialModal show={showModal} onHide={handleCloseModal} mode={modalMode} credential={selectedCredential} onSave={handleSave} />
+            {showModal && (
+                <CredentialModal
+                    show={showModal}
+                    onHide={handleCloseModal}
+                    mode={modalMode}
+                    credential={selectedCredential}
+                    onSave={handleSave}
+                    createState={createState}
+                    updateState={updateState}
+                    createError={createError}
+                    updateError={updateError}
+                />
+            )}
 
             {/* Master Password Modal */}
             {showMasterPasswordModal && (

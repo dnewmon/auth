@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Modal, Button, Form, FloatingLabel, Toast } from "react-bootstrap";
 import { Credential, CredentialRequest } from "../services/CredentialsService";
 import { Eye, EyeSlash, Clipboard, CheckCircle, Dice1 } from "react-bootstrap-icons";
+import { ApiSuspense, ApiErrorFallback, ApiState, Nullable } from "../react-utilities";
 
 interface CredentialModalProps {
     show: boolean;
@@ -9,6 +10,10 @@ interface CredentialModalProps {
     mode: "create" | "view" | "edit";
     credential?: Credential;
     onSave?: (data: Omit<CredentialRequest, "master_password">) => Promise<void>;
+    createState: ApiState;
+    updateState: ApiState;
+    createError: Nullable<any>;
+    updateError: Nullable<any>;
 }
 
 // Function to generate a secure random password
@@ -39,7 +44,7 @@ const generatePassword = (length: number = 20): string => {
         .join("");
 };
 
-export function CredentialModal({ show, onHide, mode, credential, onSave }: CredentialModalProps) {
+export function CredentialModal({ show, onHide, mode, credential, onSave, createState, updateState, createError, updateError }: CredentialModalProps) {
     // Form state
     const [serviceName, setServiceName] = useState(credential?.service_name || "");
     const [serviceUrl, setServiceUrl] = useState(credential?.service_url || "");
@@ -91,6 +96,10 @@ export function CredentialModal({ show, onHide, mode, credential, onSave }: Cred
         edit: "Edit Credential",
     }[mode];
 
+    // Filter out null errors
+    const apiStates = [createState, updateState];
+    const apiErrors = [createError, updateError].filter((error): error is any => error !== null);
+
     return (
         <>
             <Modal show={show} onHide={handleClose} size="lg">
@@ -98,120 +107,125 @@ export function CredentialModal({ show, onHide, mode, credential, onSave }: Cred
                     <Modal.Title>{title}</Modal.Title>
                 </Modal.Header>
                 <Modal.Body>
-                    {isViewMode ? (
-                        // View mode layout
-                        <div className="p-3">
-                            {credential?.category && (
-                                <>
-                                    <h5 className="mt-3">Category</h5>
-                                    <p>{credential.category}</p>
-                                </>
-                            )}
-                            <h5>Service Name</h5>
-                            <p>{credential?.service_name}</p>
+                    <ApiSuspense api_states={apiStates} suspense={<div>Loading...</div>}>
+                        {apiErrors.map((error, index) => (
+                            <ApiErrorFallback key={index} api_error={error} />
+                        ))}
+                        {isViewMode ? (
+                            // View mode layout
+                            <div className="p-3">
+                                {credential?.category && (
+                                    <>
+                                        <h5 className="mt-3">Category</h5>
+                                        <p>{credential.category}</p>
+                                    </>
+                                )}
+                                <h5>Service Name</h5>
+                                <p>{credential?.service_name}</p>
 
-                            {credential?.service_url && (
-                                <>
-                                    <h5>Service URL</h5>
-                                    <p>
-                                        <a href={credential.service_url} target="_blank" rel="noopener noreferrer">
-                                            {credential.service_url}
-                                        </a>
-                                    </p>
-                                </>
-                            )}
+                                {credential?.service_url && (
+                                    <>
+                                        <h5>Service URL</h5>
+                                        <p>
+                                            <a href={credential.service_url} target="_blank" rel="noopener noreferrer">
+                                                {credential.service_url}
+                                            </a>
+                                        </p>
+                                    </>
+                                )}
 
-                            <h5>Username</h5>
-                            <p>{credential?.username}</p>
+                                <h5>Username</h5>
+                                <p>{credential?.username}</p>
 
-                            <h5>Password</h5>
-                            <div className="d-flex flex-gap-2 align-items-center">
-                                <p className="mb-0 me-2 font-monospace">{showPassword ? credential?.password : "••••••••"}</p>
-                                <Button variant="outline-secondary" size="sm" onClick={() => setShowPassword(!showPassword)} className="me-2">
-                                    {showPassword ? <EyeSlash /> : <Eye />}
-                                </Button>
-                                <Button variant="outline-secondary" size="sm" onClick={handleCopyPassword}>
-                                    <Clipboard />
-                                </Button>
-                                <Toast onClose={() => setShowToast(false)} show={showToast} delay={3000} autohide className="ms-3">
+                                <h5>Password</h5>
+                                <div className="d-flex flex-gap-2 align-items-center">
+                                    <p className="mb-0 me-2 font-monospace">{showPassword ? credential?.password : "••••••••"}</p>
+                                    <Button variant="outline-secondary" size="sm" onClick={() => setShowPassword(!showPassword)} className="me-2">
+                                        {showPassword ? <EyeSlash /> : <Eye />}
+                                    </Button>
+                                    <Button variant="outline-secondary" size="sm" onClick={handleCopyPassword}>
+                                        <Clipboard />
+                                    </Button>
+                                    <Toast onClose={() => setShowToast(false)} show={showToast} delay={3000} autohide className="ms-3">
+                                        <Toast.Body className="d-flex align-items-center">
+                                            <CheckCircle className="text-success me-2" />
+                                            Password copied to clipboard!
+                                        </Toast.Body>
+                                    </Toast>
+                                </div>
+
+                                {credential?.notes && (
+                                    <>
+                                        <h5 className="mt-3">Notes</h5>
+                                        <pre className="font-monospace">{credential.notes}</pre>
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            // Create/Edit mode form
+                            <Form onSubmit={handleSubmit}>
+                                <FloatingLabel label="Category (optional)" className="mb-3">
+                                    <Form.Control type="text" placeholder="Category" value={category} onChange={(e) => setCategory(e.target.value)} />
+                                </FloatingLabel>
+                                <FloatingLabel label="Service Name" className="mb-3">
+                                    <Form.Control type="text" placeholder="Service Name" value={serviceName} onChange={(e) => setServiceName(e.target.value)} required />
+                                </FloatingLabel>
+
+                                <FloatingLabel label="Service URL (optional)" className="mb-3">
+                                    <Form.Control type="url" placeholder="Service URL" value={serviceUrl} onChange={(e) => setServiceUrl(e.target.value)} />
+                                </FloatingLabel>
+
+                                <FloatingLabel label="Username" className="mb-3">
+                                    <Form.Control type="text" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+                                </FloatingLabel>
+
+                                <div className="input-group align-items-stretch mb-3">
+                                    <FloatingLabel label="Password">
+                                        <Form.Control
+                                            type={showPassword ? "text" : "password"}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            required
+                                            className="form-control font-monospace"
+                                        />
+                                    </FloatingLabel>
+                                    <Button variant="outline-secondary" onClick={() => setShowPassword(!showPassword)}>
+                                        {showPassword ? <EyeSlash /> : <Eye />}
+                                    </Button>
+                                    <Button variant="outline-secondary" onClick={handleCopyPassword}>
+                                        <Clipboard />
+                                    </Button>
+                                    <Button variant="outline-secondary" onClick={() => setPassword(generatePassword())} title="Generate random password">
+                                        <Dice1 />
+                                    </Button>
+                                </div>
+                                <Toast onClose={() => setShowToast(false)} show={showToast} delay={3000} autohide className="mb-3">
                                     <Toast.Body className="d-flex align-items-center">
                                         <CheckCircle className="text-success me-2" />
                                         Password copied to clipboard!
                                     </Toast.Body>
                                 </Toast>
-                            </div>
 
-                            {credential?.notes && (
-                                <>
-                                    <h5 className="mt-3">Notes</h5>
-                                    <pre className="font-monospace">{credential.notes}</pre>
-                                </>
-                            )}
-                        </div>
-                    ) : (
-                        // Create/Edit mode form
-                        <Form onSubmit={handleSubmit}>
-                            <FloatingLabel label="Category (optional)" className="mb-3">
-                                <Form.Control type="text" placeholder="Category" value={category} onChange={(e) => setCategory(e.target.value)} />
-                            </FloatingLabel>
-                            <FloatingLabel label="Service Name" className="mb-3">
-                                <Form.Control type="text" placeholder="Service Name" value={serviceName} onChange={(e) => setServiceName(e.target.value)} required />
-                            </FloatingLabel>
-
-                            <FloatingLabel label="Service URL (optional)" className="mb-3">
-                                <Form.Control type="url" placeholder="Service URL" value={serviceUrl} onChange={(e) => setServiceUrl(e.target.value)} />
-                            </FloatingLabel>
-
-                            <FloatingLabel label="Username" className="mb-3">
-                                <Form.Control type="text" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-                            </FloatingLabel>
-
-                            <div className="input-group align-items-stretch mb-3">
-                                <FloatingLabel label="Password">
+                                <FloatingLabel label="Notes (optional)" className="mb-3">
                                     <Form.Control
-                                        type={showPassword ? "text" : "password"}
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                        className="form-control font-monospace"
+                                        className="font-monospace"
+                                        as="textarea"
+                                        placeholder="Notes"
+                                        value={notes}
+                                        onChange={(e) => setNotes(e.target.value)}
+                                        style={{ height: "300px" }}
                                     />
                                 </FloatingLabel>
-                                <Button variant="outline-secondary" onClick={() => setShowPassword(!showPassword)}>
-                                    {showPassword ? <EyeSlash /> : <Eye />}
-                                </Button>
-                                <Button variant="outline-secondary" onClick={handleCopyPassword}>
-                                    <Clipboard />
-                                </Button>
-                                <Button variant="outline-secondary" onClick={() => setPassword(generatePassword())} title="Generate random password">
-                                    <Dice1 />
-                                </Button>
-                            </div>
-                            <Toast onClose={() => setShowToast(false)} show={showToast} delay={3000} autohide className="mb-3">
-                                <Toast.Body className="d-flex align-items-center">
-                                    <CheckCircle className="text-success me-2" />
-                                    Password copied to clipboard!
-                                </Toast.Body>
-                            </Toast>
-
-                            <FloatingLabel label="Notes (optional)" className="mb-3">
-                                <Form.Control
-                                    className="font-monospace"
-                                    as="textarea"
-                                    placeholder="Notes"
-                                    value={notes}
-                                    onChange={(e) => setNotes(e.target.value)}
-                                    style={{ height: "300px" }}
-                                />
-                            </FloatingLabel>
-                        </Form>
-                    )}
+                            </Form>
+                        )}
+                    </ApiSuspense>
                 </Modal.Body>
                 <Modal.Footer>
                     <Button variant="secondary" onClick={handleClose}>
                         Close
                     </Button>
                     {!isViewMode && (
-                        <Button variant="primary" type="submit" onClick={handleSubmit}>
+                        <Button variant="primary" type="submit" onClick={handleSubmit} disabled={apiStates.some((state) => state === ApiState.Loading)}>
                             {mode === "create" ? "Create" : "Save Changes"}
                         </Button>
                     )}

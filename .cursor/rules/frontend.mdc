@@ -16,6 +16,8 @@ alwaysApply: false
 - Page react components go into a `pages` sub-folder
 - Utility react components go into a `components` sub-folder
 - Service classes go into a `services` sub-folder
+- Use ApiSuspense for areas that require data from the backend
+- Use ApiErrorFallback above or below an area that displays data, or interacts with the data.
 
 
 ### useApi Usage
@@ -37,7 +39,10 @@ const [apiCall, response, apiState, apiError] = useApi(
 ### API Error Pattern
 ```typescript
 <ApiErrorFallback api_error={apiError} />
+```
 
+### API Suspect Pattern
+```typescript
 <ApiSuspense 
     api_states={[apiState1, apiState2]} 
     suspense={<Spinner />}>
