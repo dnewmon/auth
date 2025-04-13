@@ -13,3 +13,4 @@ cryptography
 pydantic
 dotenv
 argon2-cffi
+pyminizip  # For password-protected ZIP files

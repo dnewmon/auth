@@ -1,7 +1,7 @@
-import React, { useState } from "react";
-import { Modal, Form, Button, Row, Col, Alert } from "react-bootstrap";
-import { Credential } from "../services/CredentialsService";
-import { ImportCredentialsRequest } from "../services/UtilsService";
+import React, { useState } from 'react';
+import { Modal, Form, Button, Row, Col, Alert } from 'react-bootstrap';
+import { CredentialData } from '../services/CredentialsService';
+import { ImportCredentialsRequest } from '../services/UtilsService';
 
 interface ImportModalProps {
     show: boolean;
@@ -10,39 +10,37 @@ interface ImportModalProps {
 }
 
 export const ImportModal: React.FC<ImportModalProps> = ({ show, onHide, onImport }) => {
-    const [file, setFile] = useState<File | null>(null);
     const [fileContent, setFileContent] = useState<any[]>([]);
     const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
     const [error, setError] = useState<string | null>(null);
     const [importing, setImporting] = useState(false);
 
-    const credentialFields = ["service_name", "service_url", "username", "password", "category", "notes"];
+    const credentialFields = ['service_name', 'service_url', 'username', 'password', 'category', 'notes'];
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         setError(null);
         if (!e.target.files || e.target.files.length === 0) return;
 
         const file = e.target.files[0];
-        setFile(file);
 
         try {
             const content = await file.text();
             let parsedData: any[] = [];
 
-            if (file.name.endsWith(".json")) {
+            if (file.name.endsWith('.json')) {
                 parsedData = JSON.parse(content);
-            } else if (file.name.endsWith(".csv")) {
-                const lines = content.split("\n");
-                const headers = lines[0].split(",").map((h) => h.trim());
+            } else if (file.name.endsWith('.csv')) {
+                const lines = content.split('\n');
+                const headers = lines[0].split(',').map((h) => h.trim());
                 parsedData = lines.slice(1).map((line) => {
-                    const values = line.split(",").map((v) => v.trim());
+                    const values = line.split(',').map((v) => v.trim());
                     return headers.reduce((obj, header, index) => {
                         obj[header] = values[index];
                         return obj;
                     }, {} as any);
                 });
             } else {
-                throw new Error("Unsupported file format. Please use JSON or CSV.");
+                throw new Error('Unsupported file format. Please use JSON or CSV.');
             }
 
             setFileContent(parsedData);
@@ -60,35 +58,35 @@ export const ImportModal: React.FC<ImportModalProps> = ({ show, onHide, onImport
                 setFieldMapping(initialMapping);
             }
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to parse file");
+            setError(err instanceof Error ? err.message : 'Failed to parse file');
         }
     };
 
     const handleImport = async () => {
         if (!fileContent.length) {
-            setError("No data to import");
+            setError('No data to import');
             return;
         }
 
         setImporting(true);
         try {
             const credentials = fileContent.map((item) => {
-                const credential: Partial<Credential> = {};
+                const credential: Partial<CredentialData> = {};
                 Object.entries(fieldMapping).forEach(([sourceField, targetField]) => {
                     if (item[sourceField] !== undefined) {
                         (credential as any)[targetField] = item[sourceField];
                     }
                 });
-                return credential as Credential;
+                return credential as CredentialData;
             });
 
             await onImport({
                 credentials,
-                master_password: "", // This will be filled by the parent component
+                master_password: '', // This will be filled by the parent component
             });
             onHide();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to import credentials");
+            setError(err instanceof Error ? err.message : 'Failed to import credentials');
         } finally {
             setImporting(false);
         }
@@ -124,7 +122,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ show, onHide, onImport
                                 <Col>{sourceField}</Col>
                                 <Col>
                                     <Form.Select
-                                        value={fieldMapping[sourceField] || ""}
+                                        value={fieldMapping[sourceField] || ''}
                                         onChange={(e) => {
                                             setFieldMapping((prev) => ({
                                                 ...prev,
@@ -150,7 +148,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ show, onHide, onImport
                     Cancel
                 </Button>
                 <Button variant="primary" onClick={handleImport} disabled={!fileContent.length || importing}>
-                    {importing ? "Importing..." : "Import"}
+                    {importing ? 'Importing...' : 'Import'}
                 </Button>
             </Modal.Footer>
         </Modal>

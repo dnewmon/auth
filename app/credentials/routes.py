@@ -5,7 +5,7 @@ from . import credentials_bp
 from .. import db
 from ..models.user import User
 from ..models.credential import Credential
-from ..utils.encryption import derive_key, encrypt_data, decrypt_data
+from ..utils.encryption import encrypt_data, decrypt_data
 from ..utils.responses import success_response, error_response
 from .. import limiter
 import time
@@ -27,14 +27,17 @@ def verify_master_password():
     if not data or not data.get("master_password"):
         return error_response("Master password is required.", 400)
 
-    if not current_user.check_password(data["master_password"]):
+    try:
+        # Try to get master key - this will validate the password
+        master_key = current_user.get_master_key(data["master_password"])
+
+        # Store verification in session with timestamp
+        session[MASTER_PASSWORD_SESSION_KEY] = {"verified": True, "timestamp": int(time.time())}
+        session.modified = True
+
+        return success_response("Master password verified.")
+    except ValueError as e:
         return error_response("Invalid master password.", 401)
-
-    # Store verification in session with timestamp
-    session[MASTER_PASSWORD_SESSION_KEY] = {"verified": True, "timestamp": int(time.time())}
-    session.modified = True
-
-    return success_response("Master password verified.")
 
 
 @credentials_bp.route("/verify-master/status", methods=["GET"])
@@ -45,7 +48,7 @@ def check_master_verification_status():
     current_time = int(time.time())
 
     if not verification or not verification.get("verified"):
-        return jsonify({"verified": False, "expires_at": None, "time_remaining": 0})
+        return success_response({"verified": False, "expires_at": None, "time_remaining": 0})
 
     verification_time = verification["timestamp"]
     expires_at = verification_time + MASTER_PASSWORD_TIMEOUT
@@ -56,7 +59,7 @@ def check_master_verification_status():
         session.pop(MASTER_PASSWORD_SESSION_KEY, None)
         session.modified = True
 
-    return jsonify({"verified": time_remaining > 0, "expires_at": expires_at, "time_remaining": time_remaining})
+    return success_response({"verified": time_remaining > 0, "expires_at": expires_at, "time_remaining": time_remaining})
 
 
 def require_master_password():
@@ -86,8 +89,13 @@ def create_credential():
         return error_response("Missing required fields: service_name, username, password", 400)
 
     try:
-        encryption_key = derive_key(data["master_password"], current_user.encryption_salt)
-        encrypted_pw = encrypt_data(encryption_key, data["password"])
+        # Get master encryption key - the master password was already verified
+        # by the session verification, so we can use the master key directly
+        master_key = current_user.get_master_key(data["master_password"])
+        encrypted_pw = encrypt_data(master_key, data["password"])
+    except ValueError as e:
+        logger.error(f"Error retrieving master key: {e}", exc_info=True)
+        return error_response("Invalid master password. Please verify your password again.", 401)
     except Exception as e:
         logger.error(f"Error encrypting password for new credential: {e}", exc_info=True)
         return error_response("Failed to encrypt password securely. Please try again.", 500)
@@ -105,17 +113,15 @@ def create_credential():
     try:
         db.session.add(new_credential)
         db.session.commit()
-        return (
-            jsonify(
-                {
-                    "id": new_credential.id,
-                    "service_name": new_credential.service_name,
-                    "username": new_credential.username,
-                    "category": new_credential.category,
-                    "created_at": new_credential.created_at,
-                }
-            ),
-            201,
+        return success_response(
+            {
+                "id": new_credential.id,
+                "service_name": new_credential.service_name,
+                "username": new_credential.username,
+                "category": new_credential.category,
+                "created_at": new_credential.created_at,
+            },
+            status_code=201,
         )
     except Exception as e:
         db.session.rollback()
@@ -128,19 +134,12 @@ def create_credential():
 def list_credentials():
     """List all credentials for the logged-in user (names/ids only)."""
     # Add optional category filter
-    category = request.args.get("category")
     query = Credential.query.filter_by(user_id=current_user.id)
-
-    if category:
-        query = query.filter_by(category=category)
 
     user_creds = query.order_by(Credential.category).order_by(Credential.service_name).all()
 
-    return jsonify(
-        [
-            {"id": cred.id, "service_name": cred.service_name, "username": cred.username, "service_url": cred.service_url, "category": cred.category}
-            for cred in user_creds
-        ]
+    return success_response(
+        [{"id": cred.id, "service_name": cred.service_name, "username": cred.username, "service_url": cred.service_url, "category": cred.category} for cred in user_creds]
     )
 
 
@@ -157,13 +156,17 @@ def get_credential(credential_id):
         return error_response("You do not have permission to access this credential.", 403)
 
     try:
-        encryption_key = derive_key(data["master_password"], current_user.encryption_salt)
-        decrypted_password = decrypt_data(encryption_key, credential.encrypted_password)
+        # Get master encryption key using provided password
+        master_key = current_user.get_master_key(data["master_password"])
+        decrypted_password = decrypt_data(master_key, credential.encrypted_password)
+    except ValueError as e:
+        logger.error(f"Invalid master password: {e}")
+        return error_response("Invalid master password.", 401)
     except Exception as e:
         logger.error(f"Error decrypting credential {credential.id}: {e}", exc_info=True)
         return error_response("Failed to decrypt credential.", 500)
 
-    return jsonify(
+    return success_response(
         {
             "id": credential.id,
             "service_name": credential.service_name,
@@ -196,8 +199,11 @@ def update_credential(credential_id):
     # Handle password updates
     if "password" in data:
         try:
-            encryption_key = derive_key(data["master_password"], current_user.encryption_salt)
-            credential.encrypted_password = encrypt_data(encryption_key, data["password"])
+            master_key = current_user.get_master_key(data["master_password"])
+            credential.encrypted_password = encrypt_data(master_key, data["password"])
+        except ValueError as e:
+            logger.error(f"Invalid master password: {e}")
+            return error_response("Invalid master password.", 401)
         except Exception as e:
             logger.error(f"Error encrypting new password for credential {credential.id}: {e}", exc_info=True)
             return error_response("Failed to encrypt new password securely. Please try again.", 500)
@@ -223,11 +229,11 @@ def update_credential(credential_id):
         updated = True
 
     if not updated:
-        return jsonify({"message": "No changes detected"}), 200
+        return success_response({"message": "No changes detected"})
 
     try:
         db.session.commit()
-        return jsonify(
+        return success_response(
             {
                 "id": credential.id,
                 "service_name": credential.service_name,

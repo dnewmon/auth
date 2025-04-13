@@ -1,6 +1,7 @@
-import axios from "axios";
+import axios from 'axios';
+import { SuccessResponse } from './Responses';
 
-// Client-side model (no database ID)
+// Request interfaces
 export interface LoginRequest {
     username: string;
     password: string;
@@ -12,68 +13,104 @@ export interface RegisterRequest {
     email: string;
 }
 
-// Server-side model (includes database ID)
-export interface User {
+export interface VerifyOtpRequest {
+    otp_token: string;
+}
+
+export interface RegenerateRecoveryKeysRequest {
+    password: string;
+}
+
+// Response data interfaces
+export interface UserData {
     id: number;
     username: string;
     email: string;
 }
 
-export interface LoginResponse {
-    message: string;
-    mfa_required?: "otp";
+export interface MfaRequiredData {
+    mfa_required: 'otp' | 'email';
 }
 
-export interface AuthResponse {
-    message: string;
-    user?: {
-        id: number;
-        username: string;
-        email: string;
-    };
-}
-
-export interface OtpVerifyRequest {
-    otp_token: string;
-}
-
-export interface OtpVerifyResponse {
+export interface LoginSuccessData {
     message: string;
 }
 
-export interface LogoutResponse {
+export interface OtpVerifyData {
     message: string;
 }
 
-export interface CurrentUserResponse {
+export interface RegisterData {
+    id: number;
+    username: string;
+    email: string;
+    recovery_keys: string[];
+    recovery_message: string;
+}
+
+export interface LogoutData {
+    message: string;
+}
+
+export interface CurrentUserData {
     username: string;
 }
 
+export interface RecoveryKeyStatusData {
+    total_keys: number;
+    unused_keys: number;
+    has_keys: boolean;
+}
+
+export interface RegenerateRecoveryKeysData {
+    recovery_keys: string[];
+    recovery_message: string;
+}
+
+// Response interfaces
+export interface LoginResponse extends SuccessResponse<MfaRequiredData | LoginSuccessData> {}
+export interface RegisterResponse extends SuccessResponse<RegisterData> {}
+export interface VerifyOtpResponse extends SuccessResponse<OtpVerifyData> {}
+export interface LogoutResponse extends SuccessResponse<LogoutData> {}
+export interface CurrentUserResponse extends SuccessResponse<CurrentUserData> {}
+export interface RecoveryKeyStatusResponse extends SuccessResponse<RecoveryKeyStatusData> {}
+export interface RegenerateRecoveryKeysResponse extends SuccessResponse<RegenerateRecoveryKeysData> {}
+
 export class AuthService {
-    private static readonly BASE_URL = "/api/auth";
+    private static readonly BASE_URL = '/api/auth';
 
-    static async register(request: RegisterRequest): Promise<AuthResponse> {
-        const response = await axios.post(`${this.BASE_URL}/register`, request);
-        return response.data;
-    }
-
-    static async login(request: LoginRequest): Promise<LoginResponse> {
-        const response = await axios.post(`${this.BASE_URL}/login`, request);
+    static async register(data: RegisterRequest): Promise<RegisterData> {
+        const response = await axios.post<RegisterResponse>(`${this.BASE_URL}/register`, data);
         return response.data.data;
     }
 
-    static async verifyOtp(otp_token: string): Promise<OtpVerifyResponse> {
-        const response = await axios.post(`${this.BASE_URL}/login/verify-otp`, { otp_token });
-        return response.data;
+    static async login(data: LoginRequest): Promise<MfaRequiredData | LoginSuccessData> {
+        const response = await axios.post<LoginResponse>(`${this.BASE_URL}/login`, data);
+        return response.data.data;
     }
 
-    static async logout(): Promise<LogoutResponse> {
-        const response = await axios.post(`${this.BASE_URL}/logout`);
-        return response.data;
+    static async verifyOtp(data: VerifyOtpRequest): Promise<OtpVerifyData> {
+        const response = await axios.post<VerifyOtpResponse>(`${this.BASE_URL}/login/verify-otp`, data);
+        return response.data.data;
     }
 
-    static async getCurrentUser(): Promise<CurrentUserResponse> {
-        const response = await axios.get(`${this.BASE_URL}/me`);
+    static async logout(): Promise<LogoutData> {
+        const response = await axios.post<LogoutResponse>(`${this.BASE_URL}/logout`);
+        return response.data.data;
+    }
+
+    static async getCurrentUser(): Promise<CurrentUserData> {
+        const response = await axios.get<CurrentUserResponse>(`${this.BASE_URL}/me`);
+        return response.data.data;
+    }
+
+    static async getRecoveryKeyStatus(): Promise<RecoveryKeyStatusData> {
+        const response = await axios.get<RecoveryKeyStatusResponse>(`${this.BASE_URL}/recovery-keys`);
+        return response.data.data;
+    }
+
+    static async regenerateRecoveryKeys(data: RegenerateRecoveryKeysRequest): Promise<RegenerateRecoveryKeysData> {
+        const response = await axios.post<RegenerateRecoveryKeysResponse>(`${this.BASE_URL}/recovery-keys`, data);
         return response.data.data;
     }
 }

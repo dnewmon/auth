@@ -1,11 +1,7 @@
-import React from "react";
-import { Navbar as BootstrapNavbar, Nav, Container } from "react-bootstrap";
-import { Link } from "react-router-dom";
-import { SiteNavigator } from "../routes";
+import { Navbar as BootstrapNavbar, Nav, Container } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 
 export function Navbar() {
-    const navigator = new SiteNavigator();
-
     return (
         <BootstrapNavbar bg="dark" variant="dark" expand="lg">
             <Container>

@@ -1,15 +1,15 @@
-import React, { useState } from "react";
-import { Modal, Button, Form, FloatingLabel, Toast } from "react-bootstrap";
-import { Credential, CredentialRequest } from "../services/CredentialsService";
-import { Eye, EyeSlash, Clipboard, CheckCircle, Dice1 } from "react-bootstrap-icons";
-import { ApiSuspense, ApiErrorFallback, ApiState, Nullable } from "../react-utilities";
+import React, { useState } from 'react';
+import { Modal, Button, Form, FloatingLabel, Toast } from 'react-bootstrap';
+import { CredentialData, CredentialRequest } from '../services/CredentialsService';
+import { Eye, EyeSlash, Clipboard, CheckCircle, Dice1 } from 'react-bootstrap-icons';
+import { ApiSuspense, ApiErrorFallback, ApiState, Nullable } from '../react-utilities';
 
 interface CredentialModalProps {
     show: boolean;
     onHide: () => void;
-    mode: "create" | "view" | "edit";
-    credential?: Credential;
-    onSave?: (data: Omit<CredentialRequest, "master_password">) => Promise<void>;
+    mode: 'create' | 'view' | 'edit';
+    credential?: CredentialData;
+    onSave?: (data: Omit<CredentialRequest, 'master_password'>) => Promise<void>;
     createState: ApiState;
     updateState: ApiState;
     createError: Nullable<any>;
@@ -18,13 +18,13 @@ interface CredentialModalProps {
 
 // Function to generate a secure random password
 const generatePassword = (length: number = 20): string => {
-    const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    const lowercase = "abcdefghijklmnopqrstuvwxyz";
-    const numbers = "0123456789";
-    const symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const symbols = '!@#$%^&*()_+-=[]{}|;:,.<>?';
 
     const allChars = uppercase + lowercase + numbers + symbols;
-    let password = "";
+    let password = '';
 
     // Ensure at least one character from each category
     password += uppercase[Math.floor(Math.random() * uppercase.length)];
@@ -39,30 +39,30 @@ const generatePassword = (length: number = 20): string => {
 
     // Shuffle the password
     return password
-        .split("")
+        .split('')
         .sort(() => Math.random() - 0.5)
-        .join("");
+        .join('');
 };
 
 export function CredentialModal({ show, onHide, mode, credential, onSave, createState, updateState, createError, updateError }: CredentialModalProps) {
     // Form state
-    const [serviceName, setServiceName] = useState(credential?.service_name || "");
-    const [serviceUrl, setServiceUrl] = useState(credential?.service_url || "");
-    const [username, setUsername] = useState(credential?.username || "");
-    const [password, setPassword] = useState(credential?.password || "");
-    const [notes, setNotes] = useState(credential?.notes || "");
-    const [category, setCategory] = useState(credential?.category || "");
+    const [serviceName, setServiceName] = useState(credential?.service_name || '');
+    const [serviceUrl, setServiceUrl] = useState(credential?.service_url || '');
+    const [username, setUsername] = useState(credential?.username || '');
+    const [password, setPassword] = useState(credential?.password || '');
+    const [notes, setNotes] = useState(credential?.notes || '');
+    const [category, setCategory] = useState(credential?.category || '');
     const [showPassword, setShowPassword] = useState(false);
     const [showToast, setShowToast] = useState(false);
 
     // Reset form when modal closes
     const handleClose = () => {
-        setServiceName(credential?.service_name || "");
-        setServiceUrl(credential?.service_url || "");
-        setUsername(credential?.username || "");
-        setPassword(credential?.password || "");
-        setNotes(credential?.notes || "");
-        setCategory(credential?.category || "");
+        setServiceName(credential?.service_name || '');
+        setServiceUrl(credential?.service_url || '');
+        setUsername(credential?.username || '');
+        setPassword(credential?.password || '');
+        setNotes(credential?.notes || '');
+        setCategory(credential?.category || '');
         setShowPassword(false);
         onHide();
     };
@@ -89,11 +89,11 @@ export function CredentialModal({ show, onHide, mode, credential, onSave, create
         setShowToast(true);
     };
 
-    const isViewMode = mode === "view";
+    const isViewMode = mode === 'view';
     const title = {
-        create: "Add New Credential",
-        view: "View Credential",
-        edit: "Edit Credential",
+        create: 'Add New Credential',
+        view: 'View Credential',
+        edit: 'Edit Credential',
     }[mode];
 
     // Filter out null errors
@@ -139,7 +139,7 @@ export function CredentialModal({ show, onHide, mode, credential, onSave, create
 
                                 <h5>Password</h5>
                                 <div className="d-flex flex-gap-2 align-items-center">
-                                    <p className="mb-0 me-2 font-monospace">{showPassword ? credential?.password : "••••••••"}</p>
+                                    <p className="mb-0 me-2 font-monospace">{showPassword ? credential?.password : '••••••••'}</p>
                                     <Button variant="outline-secondary" size="sm" onClick={() => setShowPassword(!showPassword)} className="me-2">
                                         {showPassword ? <EyeSlash /> : <Eye />}
                                     </Button>
@@ -182,7 +182,7 @@ export function CredentialModal({ show, onHide, mode, credential, onSave, create
                                 <div className="input-group align-items-stretch mb-3">
                                     <FloatingLabel label="Password">
                                         <Form.Control
-                                            type={showPassword ? "text" : "password"}
+                                            type={showPassword ? 'text' : 'password'}
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
                                             required
@@ -213,7 +213,7 @@ export function CredentialModal({ show, onHide, mode, credential, onSave, create
                                         placeholder="Notes"
                                         value={notes}
                                         onChange={(e) => setNotes(e.target.value)}
-                                        style={{ height: "300px" }}
+                                        style={{ height: '300px' }}
                                     />
                                 </FloatingLabel>
                             </Form>
@@ -226,7 +226,7 @@ export function CredentialModal({ show, onHide, mode, credential, onSave, create
                     </Button>
                     {!isViewMode && (
                         <Button variant="primary" type="submit" onClick={handleSubmit} disabled={apiStates.some((state) => state === ApiState.Loading)}>
-                            {mode === "create" ? "Create" : "Save Changes"}
+                            {mode === 'create' ? 'Create' : 'Save Changes'}
                         </Button>
                     )}
                 </Modal.Footer>

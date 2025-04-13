@@ -1,29 +1,28 @@
-import React, { useState } from "react";
-import { Container, Table, Button, Form, Row, Col, Pagination, Spinner } from "react-bootstrap";
-import { CredentialsService, Credential, CredentialRequest, MasterVerificationStatus } from "../services/CredentialsService";
-import { useApi, ApiErrorFallback, ApiSuspense, useDebouncedEffect, ApiState, useTimer } from "../react-utilities";
-import { CredentialModal } from "../components/CredentialModal";
-import { MasterPasswordModal } from "../components/MasterPasswordModal";
-import { DeleteConfirmationModal } from "../components/DeleteConfirmationModal";
-import { ImportModal } from "../components/ImportModal";
-import { Lock, Unlock, Eye, Pencil, Trash, Download, Upload } from "react-bootstrap-icons";
-import { SiteNavigator } from "../routes";
-import { useAppContext } from "../AppContext";
-import { UtilsService, ImportCredentialsRequest } from "../services/UtilsService";
+import React, { useState } from 'react';
+import { Container, Table, Button, Form, Row, Col, Pagination, Spinner } from 'react-bootstrap';
+import { CredentialsService, CredentialData, CredentialRequest, MasterVerificationData } from '../services/CredentialsService';
+import { useApi, ApiErrorFallback, ApiSuspense, useDebouncedEffect, ApiState, useTimer } from '../react-utilities';
+import { CredentialModal } from '../components/CredentialModal';
+import { MasterPasswordModal } from '../components/MasterPasswordModal';
+import { DeleteConfirmationModal } from '../components/DeleteConfirmationModal';
+import { ImportModal } from '../components/ImportModal';
+import { Lock, Unlock, Eye, Pencil, Trash, Download, Upload } from 'react-bootstrap-icons';
+import { useAppContext } from '../AppContext';
+import { UtilsService, ImportCredentialsRequest } from '../services/UtilsService';
 
 const ITEMS_PER_PAGE = 15;
 
-export const CredentialsPage: React.FC = () => {
+export default function CredentialsPage() {
     const { masterPassword, setMasterPassword, verificationStatus, setVerificationStatus } = useAppContext();
-    const [searchTerm, setSearchTerm] = useState("");
+    const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [showModal, setShowModal] = useState(false);
-    const [modalMode, setModalMode] = useState<"create" | "view" | "edit">("create");
-    const [selectedCredential, setSelectedCredential] = useState<Credential | undefined>();
+    const [modalMode, setModalMode] = useState<'create' | 'view' | 'edit'>('create');
+    const [selectedCredential, setSelectedCredential] = useState<CredentialData | undefined>();
     const [showMasterPasswordModal, setShowMasterPasswordModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [credentialToDelete, setCredentialToDelete] = useState<Credential | undefined>();
-    const [masterPasswordModalMode, setMasterPasswordModalMode] = useState<"verify" | "export">("verify");
+    const [credentialToDelete, setCredentialToDelete] = useState<CredentialData | undefined>();
+    const [masterPasswordModalMode, setMasterPasswordModalMode] = useState<'verify' | 'export'>('verify');
     const [showImportModal, setShowImportModal] = useState(false);
 
     // Load credentials
@@ -72,7 +71,7 @@ export const CredentialsPage: React.FC = () => {
 
     // Get specific credential
     const [getCredential] = useApi(async (id: number) => {
-        const credential = await CredentialsService.get(id, masterPassword);
+        const credential = await CredentialsService.getById(id, masterPassword);
         setSelectedCredential(credential);
         setShowModal(true);
     });
@@ -96,7 +95,7 @@ export const CredentialsPage: React.FC = () => {
         checkVerificationStatus();
 
         // Set up timer based on expiration
-        const setupExpirationTimer = (status: MasterVerificationStatus) => {
+        const setupExpirationTimer = (status: MasterVerificationData) => {
             if (status.expires_at) {
                 const expiresAt = new Date(status.expires_at).getTime();
                 const now = new Date().getTime();
@@ -120,13 +119,13 @@ export const CredentialsPage: React.FC = () => {
 
     // Export credentials
     const [handleExport, , exportState, exportError] = useApi(async (exportPassword: string) => {
-        const blob = await UtilsService.exportCredentials({ master_password: masterPassword, export_password: exportPassword });
+        const blob = await UtilsService.exportCredentials(masterPassword, exportPassword);
 
         // Create a download link
         const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
+        const a = document.createElement('a');
         a.href = url;
-        a.download = "credentials_export.zip";
+        a.download = 'credentials_export.zip';
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -150,32 +149,32 @@ export const CredentialsPage: React.FC = () => {
     // Modal handlers
     const handleOpenCreate = () => {
         if (!verificationStatus.verified) {
-            setMasterPasswordModalMode("verify");
+            setMasterPasswordModalMode('verify');
             setShowMasterPasswordModal(true);
             return;
         }
-        setModalMode("create");
+        setModalMode('create');
         setSelectedCredential(undefined);
         setShowModal(true);
     };
 
-    const handleOpenView = (credential: Credential) => {
+    const handleOpenView = (credential: CredentialData) => {
         if (!verificationStatus.verified) {
-            setMasterPasswordModalMode("verify");
+            setMasterPasswordModalMode('verify');
             setShowMasterPasswordModal(true);
             return;
         }
-        setModalMode("view");
+        setModalMode('view');
         getCredential(credential.id);
     };
 
-    const handleOpenEdit = (credential: Credential) => {
+    const handleOpenEdit = (credential: CredentialData) => {
         if (!verificationStatus.verified) {
-            setMasterPasswordModalMode("verify");
+            setMasterPasswordModalMode('verify');
             setShowMasterPasswordModal(true);
             return;
         }
-        setModalMode("edit");
+        setModalMode('edit');
         getCredential(credential.id);
     };
 
@@ -184,13 +183,13 @@ export const CredentialsPage: React.FC = () => {
         setSelectedCredential(undefined);
     };
 
-    const handleSave = async (data: Omit<CredentialRequest, "master_password">) => {
-        if (modalMode === "create") {
+    const handleSave = async (data: Omit<CredentialRequest, 'master_password'>) => {
+        if (modalMode === 'create') {
             await handleCreate({
                 ...data,
                 master_password: masterPassword,
             });
-        } else if (modalMode === "edit" && selectedCredential) {
+        } else if (modalMode === 'edit' && selectedCredential) {
             await handleUpdate({
                 ...data,
                 master_password: masterPassword,
@@ -199,12 +198,12 @@ export const CredentialsPage: React.FC = () => {
     };
 
     const handleExportClick = () => {
-        setMasterPasswordModalMode("export");
+        setMasterPasswordModalMode('export');
         setShowMasterPasswordModal(true);
     };
 
     const handleMasterPasswordSubmit = async (password: string) => {
-        if (masterPasswordModalMode === "verify") {
+        if (masterPasswordModalMode === 'verify') {
             await verifyMasterPassword(password);
         } else {
             await handleExport(password);
@@ -216,7 +215,6 @@ export const CredentialsPage: React.FC = () => {
         (cred) =>
             cred.service_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (cred.service_url && cred.service_url.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (cred.notes && cred.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
             (cred.category && cred.category.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
@@ -225,7 +223,7 @@ export const CredentialsPage: React.FC = () => {
     const paginatedCredentials = filteredCredentials?.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
     // Handle delete confirmation
-    const handleDeleteClick = (credential: Credential) => {
+    const handleDeleteClick = (credential: CredentialData) => {
         setCredentialToDelete(credential);
         setShowDeleteModal(true);
     };
@@ -257,15 +255,15 @@ export const CredentialsPage: React.FC = () => {
                         }
                     >
                         <Button
-                            variant={verificationStatus.verified ? "success" : "warning"}
+                            variant={verificationStatus.verified ? 'success' : 'warning'}
                             className="me-2"
                             onClick={() => {
-                                setMasterPasswordModalMode("verify");
+                                setMasterPasswordModalMode('verify');
                                 setShowMasterPasswordModal(true);
                             }}
                         >
                             {verificationStatus.verified ? <Unlock className="me-1" /> : <Lock className="me-1" />}
-                            {verificationStatus.verified ? "Unlocked" : "Locked"}
+                            {verificationStatus.verified ? 'Unlocked' : 'Locked'}
                         </Button>
                     </ApiSuspense>
                     <ApiSuspense
@@ -345,7 +343,7 @@ export const CredentialsPage: React.FC = () => {
                         <tbody>
                             {paginatedCredentials?.map((cred) => (
                                 <tr key={cred.id}>
-                                    <td className="d-xl-table-cell d-none">{cred.category || "-"}</td>
+                                    <td className="d-xl-table-cell d-none">{cred.category || '-'}</td>
                                     <td>{cred.service_name}</td>
                                     <td className="d-xl-table-cell d-none text-truncate">
                                         {cred.service_url && (
@@ -364,7 +362,14 @@ export const CredentialsPage: React.FC = () => {
                                                 </Button>
                                             }
                                         >
-                                            <Button variant="outline-info" size="sm" className="me-2" onClick={() => handleOpenView(cred)} title="View">
+                                            <Button
+                                                variant="outline-info"
+                                                size="sm"
+                                                className="me-2"
+                                                onClick={() => handleOpenView(cred)}
+                                                title="View"
+                                                disabled={!verificationStatus.verified}
+                                            >
                                                 <Eye />
                                             </Button>
                                         </ApiSuspense>
@@ -376,7 +381,14 @@ export const CredentialsPage: React.FC = () => {
                                                 </Button>
                                             }
                                         >
-                                            <Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleOpenEdit(cred)} title="Edit">
+                                            <Button
+                                                variant="outline-primary"
+                                                size="sm"
+                                                className="me-2"
+                                                onClick={() => handleOpenEdit(cred)}
+                                                title="Edit"
+                                                disabled={!verificationStatus.verified}
+                                            >
                                                 <Pencil />
                                             </Button>
                                         </ApiSuspense>
@@ -392,7 +404,7 @@ export const CredentialsPage: React.FC = () => {
                                                 variant="outline-danger"
                                                 size="sm"
                                                 onClick={() => handleDeleteClick(cred)}
-                                                disabled={deleteState === ApiState.Loading}
+                                                disabled={!verificationStatus.verified || deleteState === ApiState.Loading}
                                                 title="Delete"
                                             >
                                                 <Trash />
@@ -475,4 +487,4 @@ export const CredentialsPage: React.FC = () => {
             <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleImport} />
         </Container>
     );
-};
+}

@@ -1,9 +1,8 @@
-import React from "react";
-import { useAppContext } from "../AppContext";
-import { useNavigate } from "react-router-dom";
-import { Container, Card, Button } from "react-bootstrap";
+import { useAppContext } from '../AppContext';
+import { useNavigate } from 'react-router-dom';
+import { Container, Card, Button } from 'react-bootstrap';
 
-export const HomePage: React.FC = () => {
+export default function HomePage() {
     const { username } = useAppContext();
     const navigate = useNavigate();
 
@@ -15,17 +14,17 @@ export const HomePage: React.FC = () => {
                     {username ? (
                         <>
                             <Card.Text>You are logged in as {username}</Card.Text>
-                            <Button variant="primary" onClick={() => navigate("/credentials")}>
+                            <Button variant="primary" onClick={() => navigate('/credentials')}>
                                 View Credentials
                             </Button>
-                            <Button variant="secondary" className="ms-2" onClick={() => navigate("/account")}>
+                            <Button variant="secondary" className="ms-2" onClick={() => navigate('/account')}>
                                 Account Settings
                             </Button>
                         </>
                     ) : (
                         <>
                             <Card.Text>Please log in to manage your credentials</Card.Text>
-                            <Button variant="primary" onClick={() => navigate("/login")}>
+                            <Button variant="primary" onClick={() => navigate('/login')}>
                                 Login
                             </Button>
                         </>
@@ -34,4 +33,4 @@ export const HomePage: React.FC = () => {
             </Card>
         </Container>
     );
-};
+}

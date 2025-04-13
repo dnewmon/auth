@@ -1,6 +1,5 @@
-import React from "react";
-import { Modal, Button } from "react-bootstrap";
-import { Trash } from "react-bootstrap-icons";
+import { Modal, Button } from 'react-bootstrap';
+import { Trash } from 'react-bootstrap-icons';
 
 interface DeleteConfirmationModalProps {
     show: boolean;

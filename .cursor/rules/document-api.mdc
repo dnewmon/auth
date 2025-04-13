@@ -1,0 +1,11 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+
+
+- Identify endpoints based on the blueprint
+- Determine the JSON data structures for each request
+- Determine the JSON data structures for each response
+- Document the API data structures

@@ -1,23 +1,22 @@
-import React, { useEffect } from "react";
-import { Container, Nav, Navbar } from "react-bootstrap";
-import { Link, Outlet, useNavigate } from "react-router-dom";
-import { AppContextProvider, useAppContext } from "../AppContext";
-import { AuthService } from "../services/AuthService";
-import { ApiState, useApi, useDebouncedEffect } from "../react-utilities";
+import { Container, Nav, Navbar, Spinner } from 'react-bootstrap';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { AppContextProvider, useAppContext } from '../AppContext';
+import { AuthService } from '../services/AuthService';
+import { ApiErrorFallback, ApiState, ApiSuspense, useApi, useDebouncedEffect } from '../react-utilities';
 
-const LayoutContent: React.FC = () => {
+function LayoutContent() {
     const { username, setUsername } = useAppContext();
     const navigate = useNavigate();
 
-    const [checkAuth, authResponse, authState, authError] = useApi(async () => {
+    const [checkAuth, , authState, authError] = useApi(async () => {
         const response = await AuthService.getCurrentUser();
         setUsername(response.username);
     });
 
-    const [logout, logoutResponse, logoutState, logoutError] = useApi(async () => {
+    const [logout, , logoutState, logoutError] = useApi(async () => {
         await AuthService.logout();
-        setUsername("");
-        navigate("/login");
+        setUsername('');
+        navigate('/login');
     });
 
     useDebouncedEffect(() => {
@@ -63,16 +62,21 @@ const LayoutContent: React.FC = () => {
                 </Container>
             </Navbar>
             <Container className="mt-4">
-                <Outlet />
+                {authError && authError.status !== 405 && <ApiErrorFallback api_error={authError} />}
+
+                <ApiErrorFallback api_error={logoutError} />
+                <ApiSuspense api_states={[authState, logoutState]} suspense={<Spinner />}>
+                    <Outlet />
+                </ApiSuspense>
             </Container>
         </>
     );
-};
+}
 
-export const Layout: React.FC = () => {
+export default function Layout() {
     return (
         <AppContextProvider>
             <LayoutContent />
         </AppContextProvider>
     );
-};
+}

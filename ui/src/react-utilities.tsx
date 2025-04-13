@@ -56,7 +56,7 @@ export function useArray<T>(init_state?: T[]): ReactArrayResponse<T> {
 
 export function useVolatileState<T>(init_value: T): [T, () => T, (value: T) => void] {
     const [state, set_state] = useState<T>(init_value);
-    const ref_state = useRef<T>();
+    const ref_state = useRef<T | undefined>(undefined);
     ref_state.current = undefined;
 
     const get_value_fn = () => (ref_state.current !== undefined ? ref_state.current : state);

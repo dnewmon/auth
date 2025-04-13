@@ -53,9 +53,20 @@ def register():
 
         db.session.add(new_user)
         db.session.commit()
+
+        # Now that the user has an ID, initialize the two-tier encryption
+        recovery_keys = new_user.initialize_encryption(password)
+        db.session.commit()
+
         current_app.logger.info(f"User '{username}' registered successfully.")
         # Avoid returning sensitive info like password hash
-        user_data = {"id": new_user.id, "username": new_user.username, "email": new_user.email}
+        user_data = {
+            "id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email,
+            "recovery_keys": recovery_keys,
+            "recovery_message": "IMPORTANT: Please save these recovery keys in a secure location. They will be needed to recover your account if you forget your password. They will NOT be shown again.",
+        }
         return success_response(user_data, 201)  # 201 Created
     except IntegrityError as e:
         db.session.rollback()
@@ -192,3 +203,41 @@ def get_current_user():
     """Get the username of the currently authenticated user."""
     current_app.logger.info(f"User ID {current_user.id} requested their username.")
     return success_response({"username": current_user.username})
+
+
+# Recovery key management endpoints
+@auth_bp.route("/recovery-keys", methods=["GET"])
+@login_required
+@limiter.limit("10 per hour")
+def get_recovery_key_status():
+    """Check status of recovery keys (not the actual keys)"""
+    recovery_key_count = len(current_user.recovery_keys)
+    unused_keys = sum(1 for key in current_user.recovery_keys if not key.used_at)
+
+    return success_response({"total_keys": recovery_key_count, "unused_keys": unused_keys, "has_keys": recovery_key_count > 0})
+
+
+@auth_bp.route("/recovery-keys", methods=["POST"])
+@login_required
+@limiter.limit("5 per day")
+def regenerate_recovery_keys():
+    """Regenerate recovery keys"""
+    data = request.get_json()
+    if not data or "password" not in data:
+        return error_response("Current password is required", 400)
+
+    try:
+        # Regenerate keys
+        new_keys = current_user.regenerate_recovery_keys(data["password"])
+        db.session.commit()
+
+        return success_response(
+            {"recovery_keys": new_keys, "recovery_message": "IMPORTANT: Please save these new recovery keys in a secure location. Your old keys are no longer valid."}
+        )
+    except ValueError as e:
+        current_app.logger.warning(f"Failed to regenerate recovery keys for user {current_user.id}: {e}")
+        return error_response(str(e), 400)
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error regenerating recovery keys: {e}", exc_info=True)
+        return error_response("An unexpected error occurred", 500)
