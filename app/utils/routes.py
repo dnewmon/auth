@@ -60,7 +60,7 @@ def forgot_password():
             send_email(to=user.email, subject="Password Reset Request", template=email_html)
 
             current_app.logger.info(f"Password reset initiated for user {user.id} ({user.email})")
-            return success_response("If an account with that email exists, a password reset link has been sent.")
+            return success_response(message="If an account with that email exists, a password reset link has been sent.")
 
         except Exception as e:
             db.session.rollback()
@@ -71,7 +71,7 @@ def forgot_password():
         # IMPORTANT: Return the same success message even if user doesn't exist
         # This prevents user enumeration attacks. Log the attempt.
         current_app.logger.info(f"Password reset attempt for non-existent email: {user_email}")
-        return success_response("If an account with that email exists, a password reset link has been sent.")
+        return success_response(message="If an account with that email exists, a password reset link has been sent.")
 
 
 @utils_bp.route("/reset-password/<token>", methods=["POST"])
@@ -251,7 +251,7 @@ def export_credentials():
     try:
         credentials = Credential.query.filter_by(user_id=current_user.id).all()
         if not credentials:
-            return success_response("You have no credentials stored to export.")
+            return success_response(message="You have no credentials stored to export.")
 
         # Get master encryption key using password
         try:
@@ -353,7 +353,7 @@ def import_credentials():
             db.session.add(credential)
 
         db.session.commit()
-        return success_response("Credentials imported successfully.")
+        return success_response(message="Credentials imported successfully.")
 
     except Exception as e:
         db.session.rollback()
