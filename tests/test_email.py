@@ -11,15 +11,14 @@ from unittest.mock import patch, Mock, MagicMock
 from flask import Flask
 from flask_mail import Message
 
-# Import the email module functions
-from app.utils.email import send_async_email, send_email
-
 
 class TestSendAsyncEmail:
     """Tests for the send_async_email function."""
 
-    def test_send_async_email_success(self):
+    def test_send_async_email_success(self, app_context):
         """Test successful email sending within app context."""
+        from app.utils.email import send_async_email
+        
         # Create a mock Flask app
         mock_app = Mock()
         mock_app.app_context.return_value.__enter__ = Mock()
@@ -38,8 +37,10 @@ class TestSendAsyncEmail:
             # Verify mail.send was called with the message
             mock_mail.send.assert_called_once_with(mock_message)
 
-    def test_send_async_email_exception_handling(self):
+    def test_send_async_email_exception_handling(self, app_context):
         """Test error handling when email sending fails."""
+        from app.utils.email import send_async_email
+        
         # Create a mock Flask app with logger
         mock_app = Mock()
         mock_app.app_context.return_value.__enter__ = Mock()
@@ -64,8 +65,10 @@ class TestSendAsyncEmail:
                 exc_info=True
             )
 
-    def test_send_async_email_with_app_context_exception(self):
+    def test_send_async_email_with_app_context_exception(self, app_context):
         """Test handling when app context setup fails."""
+        from app.utils.email import send_async_email
+        
         # Create a mock Flask app that raises exception on context
         mock_app = Mock()
         mock_app.app_context.side_effect = RuntimeError("App context error")
@@ -83,8 +86,10 @@ class TestSendEmail:
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.Message')
     @patch('app.utils.email.Thread')
-    def test_send_email_basic(self, mock_thread_class, mock_message_class, mock_current_app):
+    def test_send_email_basic(self, mock_thread_class, mock_message_class, mock_current_app, app_context):
         """Test basic email sending functionality."""
+        from app.utils.email import send_email, send_async_email
+        
         # Mock current_app
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "noreply@example.com"}
@@ -127,8 +132,10 @@ class TestSendEmail:
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.Message')
     @patch('app.utils.email.Thread')
-    def test_send_email_with_different_recipients(self, mock_thread_class, mock_message_class, mock_current_app):
+    def test_send_email_with_different_recipients(self, mock_thread_class, mock_message_class, mock_current_app, app_context):
         """Test email sending with various recipient formats."""
+        from app.utils.email import send_email
+        
         # Setup mocks
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "admin@example.com"}
@@ -155,8 +162,10 @@ class TestSendEmail:
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.Message')
     @patch('app.utils.email.Thread')
-    def test_send_email_thread_parameters(self, mock_thread_class, mock_message_class, mock_current_app):
+    def test_send_email_thread_parameters(self, mock_thread_class, mock_message_class, mock_current_app, app_context):
         """Test that thread is created with correct parameters."""
+        from app.utils.email import send_email, send_async_email
+        
         # Setup mocks
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "test@example.com"}
@@ -178,8 +187,10 @@ class TestSendEmail:
         )
 
     @patch('app.utils.email.current_app')
-    def test_send_email_missing_config(self, mock_current_app):
+    def test_send_email_missing_config(self, mock_current_app, app_context):
         """Test behavior when MAIL_DEFAULT_SENDER is missing from config."""
+        from app.utils.email import send_email
+        
         # Mock current_app without MAIL_DEFAULT_SENDER
         mock_app = Mock()
         mock_app.config = {}  # Missing MAIL_DEFAULT_SENDER
@@ -192,8 +203,10 @@ class TestSendEmail:
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.Message')
     @patch('app.utils.email.Thread')
-    def test_send_email_empty_template(self, mock_thread_class, mock_message_class, mock_current_app):
+    def test_send_email_empty_template(self, mock_thread_class, mock_message_class, mock_current_app, app_context):
         """Test sending email with empty template."""
+        from app.utils.email import send_email
+        
         # Setup mocks
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "test@example.com"}
@@ -219,8 +232,10 @@ class TestSendEmail:
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.Message')
     @patch('app.utils.email.Thread')
-    def test_send_email_unicode_content(self, mock_thread_class, mock_message_class, mock_current_app):
+    def test_send_email_unicode_content(self, mock_thread_class, mock_message_class, mock_current_app, app_context):
         """Test sending email with unicode content."""
+        from app.utils.email import send_email
+        
         # Setup mocks
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "test@example.com"}
@@ -252,8 +267,10 @@ class TestEmailIntegration:
 
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.mail')
-    def test_complete_email_workflow(self, mock_mail, mock_current_app):
+    def test_complete_email_workflow(self, mock_mail, mock_current_app, app_context):
         """Test complete email sending workflow from start to finish."""
+        from app.utils.email import send_email
+        
         # Setup realistic Flask app mock
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "noreply@authapp.com"}
@@ -280,8 +297,10 @@ class TestEmailIntegration:
 
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.mail')
-    def test_email_error_handling_integration(self, mock_mail, mock_current_app):
+    def test_email_error_handling_integration(self, mock_mail, mock_current_app, app_context):
         """Test error handling in complete workflow."""
+        from app.utils.email import send_email
+        
         # Setup mocks
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "test@example.com"}
@@ -312,8 +331,10 @@ class TestEmailIntegration:
         assert "Failed to send email: SMTP server unavailable" in error_call[0][0]
         assert error_call[1]["exc_info"] == True
 
-    def test_thread_isolation(self):
+    def test_thread_isolation(self, app_context):
         """Test that email sending doesn't block main thread."""
+        from app.utils.email import send_email
+        
         with patch('app.utils.email.current_app') as mock_current_app, \
              patch('app.utils.email.mail') as mock_mail:
             
@@ -356,8 +377,10 @@ class TestEmailErrorScenarios:
     """Tests for various error scenarios and edge cases."""
 
     @patch('app.utils.email.current_app')
-    def test_current_app_unavailable(self, mock_current_app):
+    def test_current_app_unavailable(self, mock_current_app, app_context):
         """Test behavior when current_app is not available."""
+        from app.utils.email import send_email
+        
         # Make _get_current_object raise an exception
         mock_current_app._get_current_object.side_effect = RuntimeError("No application context")
         
@@ -367,8 +390,10 @@ class TestEmailErrorScenarios:
 
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.Message')
-    def test_message_creation_failure(self, mock_message_class, mock_current_app):
+    def test_message_creation_failure(self, mock_message_class, mock_current_app, app_context):
         """Test behavior when Message creation fails."""
+        from app.utils.email import send_email
+        
         # Setup current_app mock
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "test@example.com"}
@@ -384,8 +409,10 @@ class TestEmailErrorScenarios:
     @patch('app.utils.email.current_app')
     @patch('app.utils.email.Message')
     @patch('app.utils.email.Thread')
-    def test_thread_creation_failure(self, mock_thread_class, mock_message_class, mock_current_app):
+    def test_thread_creation_failure(self, mock_thread_class, mock_message_class, mock_current_app, app_context):
         """Test behavior when Thread creation fails."""
+        from app.utils.email import send_email
+        
         # Setup mocks
         mock_app = Mock()
         mock_app.config = {"MAIL_DEFAULT_SENDER": "test@example.com"}
@@ -401,8 +428,10 @@ class TestEmailErrorScenarios:
         with pytest.raises(RuntimeError, match="Cannot create thread"):
             send_email("user@example.com", "Test", "<p>Test</p>")
 
-    def test_send_async_email_with_none_values(self):
+    def test_send_async_email_with_none_values(self, app_context):
         """Test send_async_email with None values."""
+        from app.utils.email import send_async_email
+        
         # Test with None app
         with pytest.raises(AttributeError):
             send_async_email(None, Mock())

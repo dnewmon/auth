@@ -14,14 +14,6 @@ import io
 from unittest.mock import patch, Mock, MagicMock, mock_open, call
 from flask import Flask, url_for
 
-# Import the route functions and dependencies
-from app.utils.routes import (
-    forgot_password,
-    reset_password_with_token,
-    recover_with_recovery_key,
-    export_credentials,
-    import_credentials
-)
 
 
 class TestForgotPassword:
@@ -36,7 +28,7 @@ class TestForgotPassword:
     @patch('app.utils.routes.User')
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.request')
-    def test_forgot_password_success(self, mock_request, mock_app, mock_user_model, 
+    def test_forgot_password_success(self, app_context, mock_request, mock_app, mock_user_model, 
                                    mock_token_model, mock_db_session, mock_get_config,
                                    mock_url_for, mock_render_template, mock_send_email):
         """Test successful password reset initiation."""
@@ -91,10 +83,11 @@ class TestForgotPassword:
 
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.request')
-    def test_forgot_password_no_email(self, mock_request, mock_app):
+    def test_forgot_password_no_email(self, app_context, mock_request, mock_app):
         """Test forgot password with missing email."""
         mock_request.get_json.return_value = {}
         
+        from app.utils.routes import forgot_password
         response = forgot_password()
         
         assert response[1] == 400
@@ -105,11 +98,12 @@ class TestForgotPassword:
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.User')
     @patch('app.utils.routes.request')
-    def test_forgot_password_user_not_found(self, mock_request, mock_user_model, mock_app):
+    def test_forgot_password_user_not_found(self, app_context, mock_request, mock_user_model, mock_app):
         """Test forgot password with non-existent user."""
         mock_request.get_json.return_value = {"email": "nonexistent@example.com"}
         mock_user_model.query.filter_by.return_value.first.return_value = None
         
+        from app.utils.routes import forgot_password
         response = forgot_password()
         
         # Should return success message to prevent user enumeration
@@ -128,7 +122,7 @@ class TestForgotPassword:
     @patch('app.utils.routes.User')
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.request')
-    def test_forgot_password_database_error(self, mock_request, mock_app, mock_user_model,
+    def test_forgot_password_database_error(self, app_context, mock_request, mock_app, mock_user_model,
                                           mock_token_model, mock_db_session):
         """Test forgot password with database error."""
         mock_request.get_json.return_value = {"email": "user@example.com"}
@@ -141,6 +135,7 @@ class TestForgotPassword:
         # Simulate database error
         mock_db_session.commit.side_effect = Exception("Database error")
         
+        from app.utils.routes import forgot_password
         response = forgot_password()
         
         assert response[1] == 500
@@ -160,7 +155,7 @@ class TestResetPasswordWithToken:
     @patch('app.utils.routes.PasswordResetToken')
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.request')
-    def test_reset_password_success_no_credentials(self, mock_request, mock_app, mock_token_model,
+    def test_reset_password_success_no_credentials(self, app_context, mock_request, mock_app, mock_token_model,
                                                  mock_get_config, mock_db_session):
         """Test successful password reset with no existing credentials."""
         mock_request.get_json.return_value = {"new_password": "newpassword123"}
@@ -173,6 +168,7 @@ class TestResetPasswordWithToken:
         mock_reset_token.user = mock_user
         mock_token_model.find_by_token.return_value = mock_reset_token
         
+        from app.utils.routes import reset_password_with_token
         response = reset_password_with_token("valid_token")
         
         assert response[1] == 200
@@ -192,10 +188,11 @@ class TestResetPasswordWithToken:
 
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.request')
-    def test_reset_password_missing_password(self, mock_request, mock_app):
+    def test_reset_password_missing_password(self, app_context, mock_request, mock_app):
         """Test reset password with missing new password."""
         mock_request.get_json.return_value = {}
         
+        from app.utils.routes import reset_password_with_token
         response = reset_password_with_token("token")
         
         assert response[1] == 400
@@ -206,11 +203,12 @@ class TestResetPasswordWithToken:
     @patch('app.utils.routes.get_config_value')
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.request')
-    def test_reset_password_weak_password(self, mock_request, mock_app, mock_get_config):
+    def test_reset_password_weak_password(self, app_context, mock_request, mock_app, mock_get_config):
         """Test reset password with weak password."""
         mock_request.get_json.return_value = {"new_password": "123"}
         mock_get_config.return_value = 8
         
+        from app.utils.routes import reset_password_with_token
         response = reset_password_with_token("token")
         
         assert response[1] == 400
@@ -222,12 +220,13 @@ class TestResetPasswordWithToken:
     @patch('app.utils.routes.PasswordResetToken')
     @patch('app.utils.routes.current_app')
     @patch('app.utils.routes.request')
-    def test_reset_password_invalid_token(self, mock_request, mock_app, mock_token_model, mock_get_config):
+    def test_reset_password_invalid_token(self, app_context, mock_request, mock_app, mock_token_model, mock_get_config):
         """Test reset password with invalid token."""
         mock_request.get_json.return_value = {"new_password": "newpassword123"}
         mock_get_config.return_value = 8
         mock_token_model.find_by_token.return_value = None
         
+        from app.utils.routes import reset_password_with_token
         response = reset_password_with_token("invalid_token")
         
         assert response[1] == 400
