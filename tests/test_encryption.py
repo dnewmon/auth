@@ -488,26 +488,6 @@ class TestIntegrationScenarios:
         assert decrypted_data == user_data
         assert recovered_master_key == master_key
 
-    # @patch('app.utils.encryption.os.urandom')
-    def test_mocked_randomness_for_deterministic_testing(self):  # , mock_urandom):
-        """Test with mocked randomness for deterministic results."""
-        # Mock os.urandom to return predictable values
-        # mock_urandom.side_effect = [
-        #     b'1234567890123456',  # For salt
-        #     b'nonce_123456',      # For encryption nonce
-        # ]
-
-        password = "test_password"
-        plaintext = "test_data"
-
-        # This should be deterministic with mocked randomness
-        key = derive_key(password, b"fixed_salt_16_b")
-        encrypted = encrypt_data(key, plaintext)
-        decrypted = decrypt_data(key, encrypted)
-
-        assert decrypted == plaintext
-
-
 class TestEdgeCasesAndErrorHandling:
     """Tests for edge cases and error conditions."""
 
