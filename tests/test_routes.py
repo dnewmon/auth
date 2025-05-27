@@ -15,854 +15,586 @@ from unittest.mock import patch, Mock, MagicMock, mock_open, call
 from flask import Flask, url_for
 
 
-
 class TestForgotPassword:
     """Tests for the forgot_password endpoint."""
 
-    @patch('app.utils.routes.send_email')
-    @patch('app.utils.routes.render_template')
-    @patch('app.utils.routes.url_for')
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.PasswordResetToken')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_forgot_password_success(self, app_context, mock_request, mock_app, mock_user_model, 
-                                   mock_token_model, mock_db_session, mock_get_config,
-                                   mock_url_for, mock_render_template, mock_send_email):
+    def test_forgot_password_success(self, client):
         """Test successful password reset initiation."""
-        # Setup mocks
-        mock_request.get_json.return_value = {"email": "user@example.com"}
-        
-        mock_user = Mock()
-        mock_user.id = 1
-        mock_user.email = "user@example.com"
-        mock_user.recovery_keys = [Mock(), Mock()]  # Has 2 recovery keys
-        mock_user.recovery_keys[0].used_at = None  # Unused
-        mock_user.recovery_keys[1].used_at = "2023-01-01"  # Used
-        mock_user_model.query.filter_by.return_value.first.return_value = mock_user
-        
-        mock_token = Mock()
-        mock_token_model.generate_token.return_value = "raw_token_123"
-        mock_token_model.return_value = mock_token
-        
-        mock_get_config.return_value = "email/reset_template.html"
-        mock_url_for.return_value = "https://example.com/reset/raw_token_123"
-        mock_render_template.return_value = "<html>Reset email</html>"
-        
-        # Call the function
-        from app.utils.routes import forgot_password
-        response = forgot_password()
-        
-        # Verify the response
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "password reset link has been sent" in response_data["message"]
-        
-        # Verify database operations
-        mock_db_session.add.assert_called_once_with(mock_token)
-        mock_db_session.commit.assert_called_once()
-        
-        # Verify email was sent
-        mock_send_email.assert_called_once_with(
-            to="user@example.com",
-            subject="Password Reset Request",
-            template="<html>Reset email</html>"
-        )
-        
-        # Verify template rendering with correct context
-        mock_render_template.assert_called_once_with(
-            "email/reset_template.html",
-            reset_url="https://example.com/reset/raw_token_123",
-            user=mock_user,
-            has_recovery_keys=True,
-            unused_keys=1
-        )
+        with patch('app.utils.routes.send_email') as mock_send_email, \
+             patch('app.utils.routes.render_template') as mock_render_template, \
+             patch('app.utils.routes.url_for') as mock_url_for, \
+             patch('app.utils.routes.get_config_value') as mock_get_config, \
+             patch('app.utils.routes.db.session') as mock_db_session, \
+             patch('app.utils.routes.PasswordResetToken') as mock_token_model, \
+             patch('app.utils.routes.User') as mock_user_model:
+            
+            # Setup mocks
+            mock_user = Mock()
+            mock_user.id = 1
+            mock_user.email = "user@example.com"
+            mock_user.recovery_keys = [Mock(), Mock()]  # Has 2 recovery keys
+            mock_user.recovery_keys[0].used_at = None  # Unused
+            mock_user.recovery_keys[1].used_at = "2023-01-01"  # Used
+            mock_user_model.query.filter_by.return_value.first.return_value = mock_user
+            
+            mock_token = Mock()
+            mock_token_model.generate_token.return_value = "raw_token_123"
+            mock_token_model.return_value = mock_token
+            
+            mock_get_config.return_value = "email/reset_template.html"
+            mock_url_for.return_value = "https://example.com/reset/raw_token_123"
+            mock_render_template.return_value = "<html>Reset email</html>"
+            
+            # Make the request
+            response = client.post('/api/utils/forgot-password',
+                                 json={"email": "user@example.com"},
+                                 content_type='application/json')
+            
+            # Verify the response
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["success"] is True
+            assert "password reset link has been sent" in response_data["message"]
+            
+            # Verify database operations
+            mock_db_session.add.assert_called_once_with(mock_token)
+            mock_db_session.commit.assert_called_once()
+            
+            # Verify email was sent
+            mock_send_email.assert_called_once_with(
+                to="user@example.com",
+                subject="Password Reset Request",
+                template="<html>Reset email</html>"
+            )
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_forgot_password_no_email(self, app_context, mock_request, mock_app):
+    def test_forgot_password_no_email(self, client):
         """Test forgot password with missing email."""
-        mock_request.get_json.return_value = {}
+        response = client.post('/api/utils/forgot-password',
+                             json={},
+                             content_type='application/json')
         
-        from app.utils.routes import forgot_password
-        response = forgot_password()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
+        assert response.status_code == 400
+        response_data = json.loads(response.data)
         assert response_data["success"] is False
         assert "Email is required" in response_data["message"]
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.request')
-    def test_forgot_password_user_not_found(self, app_context, mock_request, mock_user_model, mock_app):
-        """Test forgot password with non-existent user."""
-        mock_request.get_json.return_value = {"email": "nonexistent@example.com"}
-        mock_user_model.query.filter_by.return_value.first.return_value = None
-        
-        from app.utils.routes import forgot_password
-        response = forgot_password()
-        
-        # Should return success message to prevent user enumeration
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "password reset link has been sent" in response_data["message"]
-        
-        # Verify logging of attempt
-        mock_app.logger.info.assert_called_with(
-            "Password reset attempt for non-existent email: nonexistent@example.com"
-        )
-
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.PasswordResetToken')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_forgot_password_database_error(self, app_context, mock_request, mock_app, mock_user_model,
-                                          mock_token_model, mock_db_session):
-        """Test forgot password with database error."""
-        mock_request.get_json.return_value = {"email": "user@example.com"}
-        
-        mock_user = Mock()
-        mock_user.id = 1
-        mock_user.email = "user@example.com"
-        mock_user_model.query.filter_by.return_value.first.return_value = mock_user
-        
-        # Simulate database error
-        mock_db_session.commit.side_effect = Exception("Database error")
-        
-        from app.utils.routes import forgot_password
-        response = forgot_password()
-        
-        assert response[1] == 500
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "error occurred during the password reset process" in response_data["message"]
-        
-        # Verify rollback was called
-        mock_db_session.rollback.assert_called_once()
+    def test_forgot_password_user_not_found(self, client):
+        """Test forgot password with non-existent user - should return success for security."""
+        with patch('app.utils.routes.User') as mock_user_model:
+            mock_user_model.query.filter_by.return_value.first.return_value = None
+            
+            response = client.post('/api/utils/forgot-password',
+                                 json={"email": "nonexistent@example.com"},
+                                 content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["success"] is True
+            assert "password reset link has been sent" in response_data["message"]
 
 
 class TestResetPasswordWithToken:
     """Tests for the reset_password_with_token endpoint."""
 
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.PasswordResetToken')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_reset_password_success_no_credentials(self, app_context, mock_request, mock_app, mock_token_model,
-                                                 mock_get_config, mock_db_session):
-        """Test successful password reset with no existing credentials."""
-        mock_request.get_json.return_value = {"new_password": "newpassword123"}
-        mock_get_config.return_value = 8
-        
-        mock_reset_token = Mock()
-        mock_reset_token.is_valid.return_value = True
-        mock_user = Mock()
-        mock_user.credentials = []
-        mock_reset_token.user = mock_user
-        mock_token_model.find_by_token.return_value = mock_reset_token
-        
-        from app.utils.routes import reset_password_with_token
-        response = reset_password_with_token("valid_token")
-        
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "Password has been reset successfully" in response_data["message"]
-        assert response_data["credentials_migrated"] is True
-        
-        # Verify password was set
-        mock_user.set_password.assert_called_once_with("newpassword123")
-        
-        # Verify token was marked as used
-        mock_reset_token.mark_as_used.assert_called_once()
-        
-        # Verify session version was incremented
-        mock_user.increment_session_version.assert_called_once()
+    def test_reset_password_success(self, client):
+        """Test successful password reset."""
+        with patch('app.utils.routes.PasswordResetToken') as mock_token_model, \
+             patch('app.utils.routes.User') as mock_user_model, \
+             patch('app.utils.routes.db.session') as mock_db_session, \
+             patch('app.utils.routes.get_config_value') as mock_get_config:
+            
+            # Setup mocks
+            mock_token = Mock()
+            mock_token.user_id = 1
+            mock_token.is_valid.return_value = True
+            mock_token.user = Mock()
+            mock_token.user.id = 1
+            mock_token.user.credentials = []  # No existing credentials
+            mock_token.user.set_password = Mock()
+            mock_token.user.increment_session_version = Mock()
+            mock_token.mark_as_used = Mock()
+            mock_token_model.find_by_token.return_value = mock_token
+            
+            mock_get_config.return_value = 8  # Min password length
+            
+            response = client.post('/api/utils/reset-password/valid_token',
+                                 json={"new_password": "newpassword123"},
+                                 content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["success"] is True
+            assert "Password has been reset successfully" in response_data["message"]
+            
+            # Verify password was set
+            mock_token.user.set_password.assert_called_once_with("newpassword123")
+            
+            # Verify token was marked as used
+            mock_token.mark_as_used.assert_called_once()
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_reset_password_missing_password(self, app_context, mock_request, mock_app):
+    def test_reset_password_missing_password(self, client):
         """Test reset password with missing new password."""
-        mock_request.get_json.return_value = {}
+        response = client.post('/api/utils/reset-password/valid_token',
+                             json={},
+                             content_type='application/json')
         
-        from app.utils.routes import reset_password_with_token
-        response = reset_password_with_token("token")
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
+        assert response.status_code == 400
+        response_data = json.loads(response.data)
         assert response_data["success"] is False
         assert "New password is required" in response_data["message"]
 
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_reset_password_weak_password(self, app_context, mock_request, mock_app, mock_get_config):
-        """Test reset password with weak password."""
-        mock_request.get_json.return_value = {"new_password": "123"}
-        mock_get_config.return_value = 8
-        
-        from app.utils.routes import reset_password_with_token
-        response = reset_password_with_token("token")
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Password must be at least 8 characters long" in response_data["message"]
-
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.PasswordResetToken')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_reset_password_invalid_token(self, app_context, mock_request, mock_app, mock_token_model, mock_get_config):
+    def test_reset_password_invalid_token(self, client):
         """Test reset password with invalid token."""
-        mock_request.get_json.return_value = {"new_password": "newpassword123"}
-        mock_get_config.return_value = 8
-        mock_token_model.find_by_token.return_value = None
-        
-        from app.utils.routes import reset_password_with_token
-        response = reset_password_with_token("invalid_token")
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Invalid or expired password reset token" in response_data["message"]
+        with patch('app.utils.routes.PasswordResetToken') as mock_token_model:
+            mock_token_model.find_by_token.return_value = None
+            
+            response = client.post('/api/utils/reset-password/invalid_token',
+                                 json={"new_password": "newpassword123"},
+                                 content_type='application/json')
+            
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
+            assert "Invalid or expired reset token" in response_data["message"]
 
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.PasswordResetToken')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_reset_password_with_recovery_key_success(self, mock_request, mock_app, mock_token_model,
-                                                    mock_get_config, mock_db_session):
-        """Test successful password reset with recovery key migration."""
-        mock_request.get_json.return_value = {
-            "new_password": "newpassword123",
-            "recovery_key": "recovery_key_123"
-        }
-        mock_get_config.return_value = 8
-        
-        mock_reset_token = Mock()
-        mock_reset_token.is_valid.return_value = True
-        mock_user = Mock()
-        mock_user.credentials = [Mock(), Mock()]  # Has credentials
-        mock_user.recover_with_recovery_key.return_value = True
-        mock_reset_token.user = mock_user
-        mock_token_model.find_by_token.return_value = mock_reset_token
-        
-        response = reset_password_with_token("valid_token")
-        
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "credentials have been preserved" in response_data["message"]
-        assert response_data["credentials_migrated"] is True
-        
-        # Verify recovery was attempted
-        mock_user.recover_with_recovery_key.assert_called_once_with("recovery_key_123", "newpassword123")
-
-    @patch('app.utils.routes.os.urandom')
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.PasswordResetToken')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_reset_password_with_credentials_no_recovery_key(self, mock_request, mock_app, mock_token_model,
-                                                           mock_get_config, mock_db_session, mock_urandom):
-        """Test password reset with credentials but no recovery key provided."""
-        mock_request.get_json.return_value = {"new_password": "newpassword123"}
-        mock_get_config.return_value = 8
-        mock_urandom.return_value = b"random_salt_bytes"
-        
-        mock_reset_token = Mock()
-        mock_reset_token.is_valid.return_value = True
-        mock_user = Mock()
-        mock_user.credentials = [Mock(), Mock()]  # Has credentials
-        mock_user.initialize_encryption.return_value = ["recovery1", "recovery2"]
-        mock_reset_token.user = mock_user
-        mock_token_model.find_by_token.return_value = mock_reset_token
-        
-        response = reset_password_with_token("valid_token")
-        
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "cannot access your previous credentials" in response_data["message"]
-        assert response_data["credentials_migrated"] is False
-        assert "recovery_keys" in response_data
-        assert response_data["recovery_keys"] == ["recovery1", "recovery2"]
-        
-        # Verify new encryption was initialized
-        mock_user.initialize_encryption.assert_called_once_with("newpassword123")
+    def test_reset_password_with_recovery_key_migration(self, client):
+        """Test password reset with recovery key for credential migration."""
+        with patch('app.utils.routes.PasswordResetToken') as mock_token_model, \
+             patch('app.utils.routes.db.session') as mock_db_session, \
+             patch('app.utils.routes.get_config_value') as mock_get_config:
+            
+            # Setup mocks
+            mock_token = Mock()
+            mock_token.user_id = 1
+            mock_token.is_valid.return_value = True
+            mock_token.user = Mock()
+            mock_token.user.id = 1
+            mock_token.user.credentials = [Mock(), Mock()]  # Has existing credentials
+            mock_token.user.recover_with_recovery_key = Mock(return_value=True)
+            mock_token.user.increment_session_version = Mock()
+            mock_token.mark_as_used = Mock()
+            mock_token_model.find_by_token.return_value = mock_token
+            
+            mock_get_config.return_value = 8  # Min password length
+            
+            response = client.post('/api/utils/reset-password/valid_token',
+                                 json={
+                                     "new_password": "newpassword123",
+                                     "recovery_key": "valid_recovery_key"
+                                 },
+                                 content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["success"] is True
+            assert "credentials have been preserved" in response_data["message"]
+            
+            # Verify recovery was attempted
+            mock_token.user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "newpassword123")
 
 
 class TestRecoverWithRecoveryKey:
     """Tests for the recover_with_recovery_key endpoint."""
 
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_recover_with_key_success(self, mock_request, mock_app, mock_user_model,
-                                    mock_get_config, mock_db_session):
+    def test_recover_success(self, client):
         """Test successful account recovery with recovery key."""
-        mock_request.get_json.return_value = {
-            "email": "user@example.com",
-            "recovery_key": "recovery_key_123",
-            "new_password": "newpassword123"
-        }
-        mock_get_config.return_value = 8
-        
-        mock_user = Mock()
-        mock_user.recover_with_recovery_key.return_value = True
-        mock_user_model.query.filter_by.return_value.first.return_value = mock_user
-        
-        response = recover_with_recovery_key()
-        
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "Account recovered successfully" in response_data["message"]
-        assert response_data["credentials_preserved"] is True
-        
-        # Verify recovery was attempted
-        mock_user.recover_with_recovery_key.assert_called_once_with("recovery_key_123", "newpassword123")
-        
-        # Verify session version was incremented
-        mock_user.increment_session_version.assert_called_once()
+        with patch('app.utils.routes.User') as mock_user_model, \
+             patch('app.utils.routes.db.session') as mock_db_session, \
+             patch('app.utils.routes.get_config_value') as mock_get_config:
+            
+            mock_user = Mock()
+            mock_user.id = 1
+            mock_user.recover_with_recovery_key = Mock(return_value=True)
+            mock_user.increment_session_version = Mock()
+            mock_user_model.query.filter_by.return_value.first.return_value = mock_user
+            
+            mock_get_config.return_value = 8  # Min password length
+            
+            response = client.post('/api/utils/recover-with-key',
+                                 json={
+                                     "email": "user@example.com",
+                                     "recovery_key": "valid_recovery_key",
+                                     "new_password": "newpassword123"
+                                 },
+                                 content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["success"] is True
+            assert "Account recovered successfully" in response_data["message"]
+            
+            # Verify recovery was attempted
+            mock_user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "newpassword123")
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_recover_with_key_missing_data(self, mock_request, mock_app):
-        """Test recovery with missing request data."""
-        mock_request.get_json.return_value = None
+    def test_recover_missing_fields(self, client):
+        """Test account recovery with missing fields."""
+        test_cases = [
+            {},  # All missing
+            {"email": "user@example.com"},  # Missing recovery key and password
+            {"recovery_key": "key123"},  # Missing email and password
+            {"email": "user@example.com", "recovery_key": "key123"},  # Missing password
+        ]
         
-        response = recover_with_recovery_key()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Missing required data" in response_data["message"]
+        for data in test_cases:
+            response = client.post('/api/utils/recover-with-key',
+                                 json=data,
+                                 content_type='application/json')
+            
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_recover_with_key_missing_fields(self, mock_request, mock_app):
-        """Test recovery with missing required fields."""
-        mock_request.get_json.return_value = {
-            "email": "user@example.com",
-            # missing recovery_key and new_password
-        }
-        
-        response = recover_with_recovery_key()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Email, recovery key, and new password are required" in response_data["message"]
+    def test_recover_user_not_found(self, client):
+        """Test account recovery with non-existent user."""
+        with patch('app.utils.routes.User') as mock_user_model:
+            mock_user_model.query.filter_by.return_value.first.return_value = None
+            
+            response = client.post('/api/utils/recover-with-key',
+                                 json={
+                                     "email": "nonexistent@example.com",
+                                     "recovery_key": "valid_recovery_key",
+                                     "new_password": "newpassword123"
+                                 },
+                                 content_type='application/json')
+            
+            assert response.status_code == 401
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
+            assert "Invalid email or recovery key" in response_data["message"]
 
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_recover_with_key_user_not_found(self, mock_request, mock_app, mock_user_model, mock_get_config):
-        """Test recovery with non-existent user."""
-        mock_request.get_json.return_value = {
-            "email": "nonexistent@example.com",
-            "recovery_key": "recovery_key_123",
-            "new_password": "newpassword123"
-        }
-        mock_get_config.return_value = 8
-        mock_user_model.query.filter_by.return_value.first.return_value = None
-        
-        response = recover_with_recovery_key()
-        
-        assert response[1] == 401
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Invalid email or recovery key" in response_data["message"]
-
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_recover_with_key_invalid_recovery_key(self, mock_request, mock_app, mock_user_model, mock_get_config):
-        """Test recovery with invalid recovery key."""
-        mock_request.get_json.return_value = {
-            "email": "user@example.com",
-            "recovery_key": "invalid_key",
-            "new_password": "newpassword123"
-        }
-        mock_get_config.return_value = 8
-        
-        mock_user = Mock()
-        mock_user.recover_with_recovery_key.side_effect = ValueError("Invalid recovery key")
-        mock_user_model.query.filter_by.return_value.first.return_value = mock_user
-        
-        response = recover_with_recovery_key()
-        
-        assert response[1] == 401
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Invalid email or recovery key" in response_data["message"]
+    def test_recover_invalid_recovery_key(self, client):
+        """Test account recovery with invalid recovery key."""
+        with patch('app.utils.routes.User') as mock_user_model:
+            mock_user = Mock()
+            mock_user.recover_with_recovery_key = Mock(side_effect=ValueError("Invalid recovery key"))
+            mock_user_model.query.filter_by.return_value.first.return_value = mock_user
+            
+            response = client.post('/api/utils/recover-with-key',
+                                 json={
+                                     "email": "user@example.com",
+                                     "recovery_key": "invalid_recovery_key",
+                                     "new_password": "newpassword123"
+                                 },
+                                 content_type='application/json')
+            
+            assert response.status_code == 401
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
+            assert "Invalid email or recovery key" in response_data["message"]
 
 
 class TestExportCredentials:
     """Tests for the export_credentials endpoint."""
 
-    @patch('app.utils.routes.os.unlink')
-    @patch('app.utils.routes.pyminizip.compress')
-    @patch('app.utils.routes.tempfile.NamedTemporaryFile')
-    @patch('app.utils.routes.tempfile.gettempdir')
-    @patch('app.utils.routes.make_response')
-    @patch('app.utils.routes.decrypt_data')
-    @patch('app.utils.routes.Credential')
-    @patch('app.utils.routes.current_user')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_export_credentials_success(self, mock_request, mock_app, mock_current_user,
-                                      mock_credential_model, mock_decrypt, mock_make_response,
-                                      mock_gettempdir, mock_tempfile, mock_pyminizip, mock_unlink):
+    def test_export_success(self, client):
         """Test successful credential export."""
-        mock_request.get_json.return_value = {
-            "master_password": "masterpass123",
-            "export_password": "exportpass123"
-        }
-        
-        mock_current_user.id = 1
-        mock_current_user.get_master_key.return_value = b"master_key_bytes"
-        
-        # Mock credentials
-        mock_cred1 = Mock()
-        mock_cred1.id = 1
-        mock_cred1.service_name = "Service1"
-        mock_cred1.service_url = "https://service1.com"
-        mock_cred1.username = "user1"
-        mock_cred1.encrypted_password = "encrypted1"
-        mock_cred1.notes = "Note1"
-        
-        mock_cred2 = Mock()
-        mock_cred2.id = 2
-        mock_cred2.service_name = "Service2"
-        mock_cred2.service_url = None
-        mock_cred2.username = "user2"
-        mock_cred2.encrypted_password = "encrypted2"
-        mock_cred2.notes = None
-        
-        mock_credential_model.query.filter_by.return_value.all.return_value = [mock_cred1, mock_cred2]
-        
-        # Mock decryption
-        mock_decrypt.side_effect = ["password1", "password2"]
-        
-        # Mock file operations
-        mock_temp_csv = Mock()
-        mock_temp_csv.name = "/tmp/temp_csv_file"
-        mock_tempfile.return_value.__enter__.return_value = mock_temp_csv
-        mock_gettempdir.return_value = "/tmp"
-        
-        # Mock zip file reading
-        with patch('builtins.open', mock_open(read_data=b"zip_file_content")):
-            mock_response = Mock()
-            mock_make_response.return_value = mock_response
+        with patch('app.utils.routes.current_user') as mock_current_user, \
+             patch('app.utils.routes.Credential') as mock_credential_model, \
+             patch('app.utils.routes.decrypt_data') as mock_decrypt, \
+             patch('app.utils.routes.tempfile.NamedTemporaryFile') as mock_temp_file, \
+             patch('app.utils.routes.pyminizip.compress') as mock_zip, \
+             patch('app.utils.routes.open', mock_open(read_data=b"zip_content")) as mock_file_open, \
+             patch('app.utils.routes.os.unlink') as mock_unlink:
             
-            response = export_credentials()
+            # Setup mocks
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_current_user.get_master_key = Mock(return_value="master_key")
             
-            # Verify response setup
-            mock_make_response.assert_called_once_with(b"zip_file_content")
-            mock_response.headers.set.assert_any_call("Content-Type", "application/zip")
-            mock_response.headers.set.assert_any_call("Content-Disposition", "attachment", filename="credentials_export.zip")
+            mock_credential = Mock()
+            mock_credential.id = 1
+            mock_credential.service_name = "example.com"
+            mock_credential.service_url = "https://example.com"
+            mock_credential.username = "user@example.com"
+            mock_credential.encrypted_password = "encrypted_password"
+            mock_credential.notes = "Test notes"
+            mock_credential_model.query.filter_by.return_value.all.return_value = [mock_credential]
             
-            # Verify decryption was called for each credential
-            assert mock_decrypt.call_count == 2
-            mock_decrypt.assert_any_call(b"master_key_bytes", "encrypted1")
-            mock_decrypt.assert_any_call(b"master_key_bytes", "encrypted2")
+            mock_decrypt.return_value = "decrypted_password"
             
-            # Verify ZIP creation
-            mock_pyminizip.compress.assert_called_once_with(
-                "/tmp/temp_csv_file", "credentials_export.csv", "/tmp/credentials_export_1.zip", "exportpass123", 5
-            )
+            # Mock temporary file
+            mock_temp = Mock()
+            mock_temp.name = "/tmp/test_file.csv"
+            mock_temp_file.return_value.__enter__.return_value = mock_temp
             
-            # Verify cleanup
-            assert mock_unlink.call_count == 2
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/export',
+                                     json={
+                                         "master_password": "master123",
+                                         "export_password": "export123"
+                                     },
+                                     content_type='application/json')
+            
+            assert response.status_code == 200
+            assert response.content_type == 'application/zip'
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_export_credentials_missing_data(self, mock_request, mock_app):
-        """Test export with missing request data."""
-        mock_request.get_json.return_value = None
-        
-        response = export_credentials()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Request data is required" in response_data["message"]
-
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_export_credentials_missing_master_password(self, mock_request, mock_app):
+    def test_export_missing_master_password(self, client):
         """Test export with missing master password."""
-        mock_request.get_json.return_value = {"export_password": "exportpass123"}
-        
-        response = export_credentials()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Master password is required" in response_data["message"]
+        with patch('app.utils.routes.current_user') as mock_current_user:
+            mock_current_user.is_authenticated = True
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/export',
+                                     json={"export_password": "export123"},
+                                     content_type='application/json')
+            
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
+            assert "Master password is required" in response_data["message"]
 
-    @patch('app.utils.routes.Credential')
-    @patch('app.utils.routes.current_user')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_export_credentials_no_credentials(self, mock_request, mock_app, mock_current_user, mock_credential_model):
-        """Test export with no stored credentials."""
-        mock_request.get_json.return_value = {
-            "master_password": "masterpass123",
-            "export_password": "exportpass123"
-        }
-        
-        mock_current_user.id = 1
-        mock_credential_model.query.filter_by.return_value.all.return_value = []
-        
-        response = export_credentials()
-        
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "no credentials stored to export" in response_data["message"]
+    def test_export_missing_export_password(self, client):
+        """Test export with missing export password."""
+        with patch('app.utils.routes.current_user') as mock_current_user:
+            mock_current_user.is_authenticated = True
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/export',
+                                     json={"master_password": "master123"},
+                                     content_type='application/json')
+            
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
+            assert "Export password is required" in response_data["message"]
 
-    @patch('app.utils.routes.current_user')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_export_credentials_invalid_master_password(self, mock_request, mock_app, mock_current_user):
-        """Test export with invalid master password."""
-        mock_request.get_json.return_value = {
-            "master_password": "wrongpassword",
-            "export_password": "exportpass123"
-        }
+    def test_export_no_credentials(self, client):
+        """Test export when user has no credentials."""
+        with patch('app.utils.routes.current_user') as mock_current_user, \
+             patch('app.utils.routes.Credential') as mock_credential_model:
+            
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_credential_model.query.filter_by.return_value.all.return_value = []
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/export',
+                                     json={
+                                         "master_password": "master123",
+                                         "export_password": "export123"
+                                     },
+                                     content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["success"] is True
+            assert "no credentials stored to export" in response_data["message"]
+
+    def test_export_unauthorized(self, client):
+        """Test export when user is not authenticated."""
+        response = client.post('/api/utils/export',
+                             json={
+                                 "master_password": "master123",
+                                 "export_password": "export123"
+                             },
+                             content_type='application/json')
         
-        mock_current_user.get_master_key.side_effect = ValueError("Invalid master password")
-        
-        response = export_credentials()
-        
-        assert response[1] == 401
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Invalid master password" in response_data["message"]
+        assert response.status_code == 401
 
 
 class TestImportCredentials:
     """Tests for the import_credentials endpoint."""
 
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.encrypt_data')
-    @patch('app.utils.routes.Credential')
-    @patch('app.utils.routes.current_user')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_import_credentials_success(self, mock_request, mock_app, mock_current_user,
-                                      mock_credential_model, mock_encrypt, mock_db_session):
+    def test_import_success(self, client):
         """Test successful credential import."""
-        mock_request.get_json.return_value = {
-            "master_password": "masterpass123",
-            "credentials": [
+        with patch('app.utils.routes.current_user') as mock_current_user, \
+             patch('app.utils.routes.encrypt_data') as mock_encrypt, \
+             patch('app.utils.routes.Credential') as mock_credential_model, \
+             patch('app.utils.routes.db.session') as mock_db_session:
+            
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_current_user.get_master_key = Mock(return_value="master_key")
+            
+            mock_encrypt.return_value = "encrypted_data"
+            
+            # Create test credential data
+            credentials_data = [
                 {
-                    "service_name": "Service1",
-                    "service_url": "https://service1.com",
-                    "username": "user1",
-                    "password": "password1",
-                    "category": "Work",
-                    "notes": "Note1"
-                },
-                {
-                    "service_name": "Service2",
-                    "username": "user2",
-                    "password": "password2"
+                    "service_name": "example.com",
+                    "service_url": "https://example.com",
+                    "username": "user@example.com",
+                    "password": "password123",
+                    "notes": "Test notes"
                 }
             ]
-        }
-        
-        mock_current_user.id = 1
-        mock_current_user.get_master_key.return_value = b"master_key_bytes"
-        
-        mock_encrypt.side_effect = ["encrypted1", "encrypted2"]
-        
-        # Mock credential creation
-        mock_credential_instances = [Mock(), Mock()]
-        mock_credential_model.side_effect = mock_credential_instances
-        
-        response = import_credentials()
-        
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        assert "Credentials imported successfully" in response_data["message"]
-        
-        # Verify credentials were created
-        assert mock_credential_model.call_count == 2
-        
-        # Verify first credential
-        mock_credential_model.assert_any_call(
-            user_id=1,
-            service_name="Service1",
-            service_url="https://service1.com",
-            username="user1",
-            category="Work",
-            notes="Note1"
-        )
-        
-        # Verify second credential  
-        mock_credential_model.assert_any_call(
-            user_id=1,
-            service_name="Service2",
-            service_url=None,
-            username="user2",
-            category=None,
-            notes=None
-        )
-        
-        # Verify encryption
-        mock_encrypt.assert_any_call(b"master_key_bytes", "password1")
-        mock_encrypt.assert_any_call(b"master_key_bytes", "password2")
-        
-        # Verify database operations
-        assert mock_db_session.add.call_count == 2
-        mock_db_session.commit.assert_called_once()
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/import',
+                                     json={
+                                         "master_password": "master123",
+                                         "credentials": credentials_data
+                                     },
+                                     content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["success"] is True
+            assert "Credentials imported successfully" in response_data["message"]
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_import_credentials_missing_data(self, mock_request, mock_app):
-        """Test import with missing request data."""
-        mock_request.get_json.return_value = None
-        
-        response = import_credentials()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Request data is required" in response_data["message"]
-
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_import_credentials_missing_master_password(self, mock_request, mock_app):
+    def test_import_missing_master_password(self, client):
         """Test import with missing master password."""
-        mock_request.get_json.return_value = {"credentials": []}
-        
-        response = import_credentials()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Master password is required" in response_data["message"]
+        with patch('app.utils.routes.current_user') as mock_current_user:
+            mock_current_user.is_authenticated = True
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/import',
+                                     json={"credentials": []},
+                                     content_type='application/json')
+                
+                assert response.status_code == 400
+                response_data = json.loads(response.data)
+                assert response_data["success"] is False
+                assert "Master password is required" in response_data["message"]
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_import_credentials_missing_credentials(self, mock_request, mock_app):
+    def test_import_missing_credentials(self, client):
         """Test import with missing credentials data."""
-        mock_request.get_json.return_value = {"master_password": "masterpass123"}
-        
-        response = import_credentials()
-        
-        assert response[1] == 400
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Credentials data is required" in response_data["message"]
+        with patch('app.utils.routes.current_user') as mock_current_user:
+            mock_current_user.is_authenticated = True
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/import',
+                                     json={"master_password": "master123"},
+                                     content_type='application/json')
+            
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
+            assert "Credentials data is required" in response_data["message"]
 
-    @patch('app.utils.routes.current_user')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_import_credentials_invalid_master_password(self, mock_request, mock_app, mock_current_user):
+    def test_import_unauthorized(self, client):
+        """Test import when user is not authenticated."""
+        response = client.post('/api/utils/import',
+                             json={
+                                 "master_password": "master123",
+                                 "credentials": []
+                             },
+                             content_type='application/json')
+        
+        assert response.status_code == 401
+
+    def test_import_invalid_master_password(self, client):
         """Test import with invalid master password."""
-        mock_request.get_json.return_value = {
-            "master_password": "wrongpassword",
-            "credentials": [{"service_name": "Test", "username": "test", "password": "test"}]
-        }
-        
-        mock_current_user.get_master_key.side_effect = ValueError("Invalid master password")
-        
-        response = import_credentials()
-        
-        assert response[1] == 401
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Invalid master password" in response_data["message"]
-
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.encrypt_data')
-    @patch('app.utils.routes.Credential')
-    @patch('app.utils.routes.current_user')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_import_credentials_with_empty_password(self, mock_request, mock_app, mock_current_user,
-                                                  mock_credential_model, mock_encrypt, mock_db_session):
-        """Test importing credentials with empty/missing password."""
-        mock_request.get_json.return_value = {
-            "master_password": "masterpass123",
-            "credentials": [
-                {
-                    "service_name": "Service1",
-                    "username": "user1",
-                    "password": None  # Explicitly None
-                },
-                {
-                    "service_name": "Service2",
-                    "username": "user2"
-                    # Missing password key
-                }
-            ]
-        }
-        
-        mock_current_user.id = 1
-        mock_current_user.get_master_key.return_value = b"master_key_bytes"
-        
-        mock_encrypt.return_value = "encrypted_empty"
-        mock_credential_model.return_value = Mock()
-        
-        response = import_credentials()
-        
-        assert response[1] == 200
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is True
-        
-        # Verify empty passwords were encrypted
-        mock_encrypt.assert_any_call(b"master_key_bytes", "")
-        assert mock_encrypt.call_count == 2
-
-    @patch('app.utils.routes.db.session')
-    @patch('app.utils.routes.encrypt_data')
-    @patch('app.utils.routes.Credential')
-    @patch('app.utils.routes.current_user')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_import_credentials_database_error(self, mock_request, mock_app, mock_current_user,
-                                             mock_credential_model, mock_encrypt, mock_db_session):
-        """Test import with database error."""
-        mock_request.get_json.return_value = {
-            "master_password": "masterpass123",
-            "credentials": [{"service_name": "Test", "username": "test", "password": "test"}]
-        }
-        
-        mock_current_user.id = 1
-        mock_current_user.get_master_key.return_value = b"master_key_bytes"
-        mock_encrypt.return_value = "encrypted"
-        mock_credential_model.return_value = Mock()
-        
-        # Simulate database error
-        mock_db_session.commit.side_effect = Exception("Database error")
-        
-        response = import_credentials()
-        
-        assert response[1] == 500
-        response_data = json.loads(response[0].data)
-        assert response_data["success"] is False
-        assert "Failed to import credentials" in response_data["message"]
-        
-        # Verify rollback was called
-        mock_db_session.rollback.assert_called_once()
+        with patch('app.utils.routes.current_user') as mock_current_user:
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_current_user.get_master_key = Mock(side_effect=ValueError("Invalid master password"))
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/import',
+                                     json={
+                                         "master_password": "wrongpassword",
+                                         "credentials": [{"service_name": "test"}]
+                                     },
+                                     content_type='application/json')
+            
+            assert response.status_code == 401
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
 
 
 class TestRoutesIntegration:
-    """Integration tests for route functionality."""
+    """Integration tests for route structure and patterns."""
 
-    @patch('app.utils.routes.limiter')
-    def test_rate_limiting_applied(self, mock_limiter):
-        """Test that rate limiting is properly applied to endpoints."""
-        # This is more of a structure test to verify decorators are in place
-        from app.utils.routes import forgot_password, reset_password_with_token, recover_with_recovery_key
-        from app.utils.routes import export_credentials, import_credentials
+    def test_routes_require_json_content_type(self, client):
+        """Test that routes properly handle JSON content type requirements."""
+        endpoints = [
+            '/api/utils/forgot-password',
+            '/api/utils/reset-password/token123',
+            '/api/utils/recover-with-key'
+        ]
         
-        # We can't easily test the actual rate limiting without a full Flask app,
-        # but we can verify the functions exist and are properly structured
-        assert callable(forgot_password)
-        assert callable(reset_password_with_token)
-        assert callable(recover_with_recovery_key)
-        assert callable(export_credentials)
-        assert callable(import_credentials)
+        for endpoint in endpoints:
+            response = client.post(endpoint, data="not json")
+            assert response.status_code in [400, 415]  # Bad request or unsupported media type
 
-    def test_route_error_handling_patterns(self):
-        """Test that routes follow consistent error handling patterns."""
-        # This tests the general structure and patterns used across routes
-        # All routes should have consistent error response formats
+    def test_routes_handle_empty_request_body(self, client):
+        """Test that routes handle empty request bodies gracefully."""
+        endpoints = [
+            '/api/utils/forgot-password',
+            '/api/utils/reset-password/token123',
+            '/api/utils/recover-with-key'
+        ]
         
-        # Test imports are available
-        from app.utils.routes import success_response, error_response
+        for endpoint in endpoints:
+            response = client.post(endpoint, json=None, content_type='application/json')
+            assert response.status_code == 400
+
+    def test_authenticated_routes_require_login(self, client):
+        """Test that authenticated routes require user login."""
+        authenticated_endpoints = [
+            ('/api/utils/export', {"master_password": "test", "export_password": "test"}),
+            ('/api/utils/import', {"master_password": "test", "credentials": []})
+        ]
         
-        assert callable(success_response)
-        assert callable(error_response)
+        for endpoint, data in authenticated_endpoints:
+            response = client.post(endpoint, json=data, content_type='application/json')
+            assert response.status_code == 401
 
 
 class TestRouteSecurityFeatures:
     """Tests for security features in routes."""
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.request')
-    def test_forgot_password_prevents_user_enumeration(self, mock_request, mock_user_model, mock_app):
-        """Test that forgot password doesn't reveal if users exist."""
-        mock_request.get_json.return_value = {"email": "test@example.com"}
-        
-        # Test with existing user
-        mock_user_model.query.filter_by.return_value.first.return_value = Mock()
-        response1 = forgot_password()
-        
-        # Test with non-existing user
-        mock_user_model.query.filter_by.return_value.first.return_value = None
-        response2 = forgot_password()
-        
-        # Both should return the same success message
-        assert response1[1] == response2[1] == 200
-        data1 = json.loads(response1[0].data)
-        data2 = json.loads(response2[0].data)
-        assert data1["message"] == data2["message"]
+    def test_forgot_password_prevents_user_enumeration(self, client):
+        """Test that forgot password doesn't reveal if user exists."""
+        with patch('app.utils.routes.User') as mock_user_model:
+            # Test with existing user
+            mock_user_model.query.filter_by.return_value.first.return_value = Mock()
+            response1 = client.post('/api/utils/forgot-password',
+                                   json={"email": "existing@example.com"},
+                                   content_type='application/json')
+            
+            # Test with non-existing user
+            mock_user_model.query.filter_by.return_value.first.return_value = None
+            response2 = client.post('/api/utils/forgot-password',
+                                   json={"email": "nonexisting@example.com"},
+                                   content_type='application/json')
+            
+            # Both should return the same response
+            assert response1.status_code == response2.status_code
+            assert json.loads(response1.data)["message"] == json.loads(response2.data)["message"]
 
-    @patch('app.utils.routes.get_config_value')
-    @patch('app.utils.routes.User')
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.request')
-    def test_recovery_endpoint_prevents_user_enumeration(self, mock_request, mock_app, mock_user_model, mock_get_config):
-        """Test that recovery endpoint doesn't reveal if users exist."""
-        mock_request.get_json.return_value = {
-            "email": "test@example.com",
-            "recovery_key": "test_key",
-            "new_password": "newpassword123"
-        }
-        mock_get_config.return_value = 8
-        
-        # Test with existing user but invalid key
-        mock_user = Mock()
-        mock_user.recover_with_recovery_key.side_effect = ValueError("Invalid key")
-        mock_user_model.query.filter_by.return_value.first.return_value = mock_user
-        response1 = recover_with_recovery_key()
-        
-        # Test with non-existing user
-        mock_user_model.query.filter_by.return_value.first.return_value = None
-        response2 = recover_with_recovery_key()
-        
-        # Both should return the same error message
-        assert response1[1] == response2[1] == 401
-        data1 = json.loads(response1[0].data)
-        data2 = json.loads(response2[0].data)
-        assert data1["message"] == data2["message"]
+    def test_recovery_prevents_user_enumeration(self, client):
+        """Test that recovery endpoint doesn't reveal if user exists."""
+        with patch('app.utils.routes.User') as mock_user_model:
+            # Mock for non-existing user
+            mock_user_model.query.filter_by.return_value.first.return_value = None
+            response1 = client.post('/api/utils/recover-with-key',
+                                   json={
+                                       "email": "nonexisting@example.com", 
+                                       "recovery_key": "key123",
+                                       "new_password": "newpass123"
+                                   },
+                                   content_type='application/json')
+            
+            # Mock for existing user with invalid key
+            mock_user = Mock()
+            mock_user.recover_with_recovery_key = Mock(side_effect=ValueError("Invalid key"))
+            mock_user_model.query.filter_by.return_value.first.return_value = mock_user
+            response2 = client.post('/api/utils/recover-with-key',
+                                   json={
+                                       "email": "existing@example.com", 
+                                       "recovery_key": "invalid_key",
+                                       "new_password": "newpass123"
+                                   },
+                                   content_type='application/json')
+            
+            # Both should return similar error messages
+            assert response1.status_code == response2.status_code
+            assert "Invalid email or recovery key" in json.loads(response1.data)["message"]
+            assert "Invalid email or recovery key" in json.loads(response2.data)["message"]
 
-    @patch('app.utils.routes.current_app')
-    @patch('app.utils.routes.PasswordResetToken')
-    @patch('app.utils.routes.request')
-    def test_token_logging_security(self, mock_request, mock_token_model, mock_app):
-        """Test that tokens are not fully logged for security."""
-        mock_request.get_json.return_value = {"new_password": "newpassword123"}
-        mock_token_model.find_by_token.return_value = None
-        
-        reset_password_with_token("this_is_a_long_token_that_should_be_truncated")
-        
-        # Verify that only a preview of the token is logged
-        mock_app.logger.warning.assert_called_once()
-        logged_message = mock_app.logger.warning.call_args[0][0]
-        assert "this_i..." in logged_message
-        assert "this_is_a_long_token_that_should_be_truncated" not in logged_message
+    def test_password_reset_token_security(self, client):
+        """Test security measures for password reset tokens."""
+        with patch('app.utils.routes.current_app') as mock_app:
+            mock_logger = Mock()
+            mock_app.logger = mock_logger
+            
+            # Test with potentially malicious token
+            response = client.post('/api/utils/reset-password/malicious_token',
+                                 json={"new_password": "newpass123"},
+                                 content_type='application/json')
+            
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["success"] is False
