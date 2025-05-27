@@ -54,4 +54,4 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           timeout_minutes: "60"
-          allowed_tools: "Bash(*),mcp_*"
+          allowed_tools: "Bash(*),Bash(npm),Bash(node),Bash(pytest),Bash(pip),Bash(python),Bash(python3),WebFetch(*),mcp_*"
