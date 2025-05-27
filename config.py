@@ -67,7 +67,15 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:")  # Allow in-memory for testing default
     WTF_CSRF_ENABLED = False  # Disable CSRF forms validation for testing
     LOG_LEVEL = "DEBUG"
-    # Ensure test environment variables are set for secrets if needed, or mock them
+    
+    # Override SECRET_KEY and JWT_SECRET_KEY with defaults for testing
+    SECRET_KEY = os.environ.get("SECRET_KEY", "test-secret-key-for-testing")
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "test-jwt-secret-key-for-testing")
+    
+    # Mail configuration for testing
+    MAIL_SERVER = os.environ.get("MAIL_SERVER", "localhost")
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "test@example.com")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "testpassword")
 
 
 class ProductionConfig(Config):

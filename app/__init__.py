@@ -49,7 +49,13 @@ def create_app(config_name: str = "development") -> Flask:
     migrate.init_app(app, db)
     login_manager.init_app(app)
     mail.init_app(app)
+    
+    # Always initialize limiter, but disable it for testing
     limiter.init_app(app)
+    
+    # Disable rate limiting in testing mode
+    if config_obj.TESTING:
+        limiter.enabled = False
 
     # Load user callback for Flask-Login
     from .models.user import User

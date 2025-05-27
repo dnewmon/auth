@@ -53,7 +53,7 @@ class TestForgotPassword:
             # Verify the response
             assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["success"] is True
+            assert response_data["status"] == "success"
             assert "password reset link has been sent" in response_data["message"]
             
             # Verify database operations
@@ -75,7 +75,7 @@ class TestForgotPassword:
         
         assert response.status_code == 400
         response_data = json.loads(response.data)
-        assert response_data["success"] is False
+        assert response_data["status"] == "error"
         assert "Email is required" in response_data["message"]
 
     def test_forgot_password_user_not_found(self, client):
@@ -89,7 +89,7 @@ class TestForgotPassword:
             
             assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["success"] is True
+            assert response_data["status"] == "success"
             assert "password reset link has been sent" in response_data["message"]
 
 
@@ -123,8 +123,8 @@ class TestResetPasswordWithToken:
             
             assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["success"] is True
-            assert "Password has been reset successfully" in response_data["message"]
+            assert response_data["status"] == "success"
+            assert "Password has been reset successfully" in response_data["data"]["message"]
             
             # Verify password was set
             mock_token.user.set_password.assert_called_once_with("newpassword123")
@@ -140,7 +140,7 @@ class TestResetPasswordWithToken:
         
         assert response.status_code == 400
         response_data = json.loads(response.data)
-        assert response_data["success"] is False
+        assert response_data["status"] == "error"
         assert "New password is required" in response_data["message"]
 
     def test_reset_password_invalid_token(self, client):
@@ -154,8 +154,8 @@ class TestResetPasswordWithToken:
             
             assert response.status_code == 400
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
-            assert "Invalid or expired reset token" in response_data["message"]
+            assert response_data["status"] == "error"
+            assert "Invalid or expired password reset token" in response_data["message"]
 
     def test_reset_password_with_recovery_key_migration(self, client):
         """Test password reset with recovery key for credential migration."""
@@ -186,8 +186,8 @@ class TestResetPasswordWithToken:
             
             assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["success"] is True
-            assert "credentials have been preserved" in response_data["message"]
+            assert response_data["status"] == "success"
+            assert "credentials have been preserved" in response_data["data"]["message"]
             
             # Verify recovery was attempted
             mock_token.user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "newpassword123")
@@ -220,8 +220,8 @@ class TestRecoverWithRecoveryKey:
             
             assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["success"] is True
-            assert "Account recovered successfully" in response_data["message"]
+            assert response_data["status"] == "success"
+            assert "Account recovered successfully" in response_data["data"]["message"]
             
             # Verify recovery was attempted
             mock_user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "newpassword123")
@@ -242,7 +242,7 @@ class TestRecoverWithRecoveryKey:
             
             assert response.status_code == 400
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
 
     def test_recover_user_not_found(self, client):
         """Test account recovery with non-existent user."""
@@ -259,7 +259,7 @@ class TestRecoverWithRecoveryKey:
             
             assert response.status_code == 401
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
             assert "Invalid email or recovery key" in response_data["message"]
 
     def test_recover_invalid_recovery_key(self, client):
@@ -279,7 +279,7 @@ class TestRecoverWithRecoveryKey:
             
             assert response.status_code == 401
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
             assert "Invalid email or recovery key" in response_data["message"]
 
 
@@ -340,7 +340,7 @@ class TestExportCredentials:
             
             assert response.status_code == 400
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
             assert "Master password is required" in response_data["message"]
 
     def test_export_missing_export_password(self, client):
@@ -355,7 +355,7 @@ class TestExportCredentials:
             
             assert response.status_code == 400
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
             assert "Export password is required" in response_data["message"]
 
     def test_export_no_credentials(self, client):
@@ -377,7 +377,7 @@ class TestExportCredentials:
             
             assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["success"] is True
+            assert response_data["status"] == "success"
             assert "no credentials stored to export" in response_data["message"]
 
     def test_export_unauthorized(self, client):
@@ -389,7 +389,8 @@ class TestExportCredentials:
                              },
                              content_type='application/json')
         
-        assert response.status_code == 401
+        # Flask-Login redirects unauthenticated users
+        assert response.status_code == 302
 
 
 class TestImportCredentials:
@@ -429,7 +430,7 @@ class TestImportCredentials:
             
             assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["success"] is True
+            assert response_data["status"] == "success"
             assert "Credentials imported successfully" in response_data["message"]
 
     def test_import_missing_master_password(self, client):
@@ -444,7 +445,7 @@ class TestImportCredentials:
                 
                 assert response.status_code == 400
                 response_data = json.loads(response.data)
-                assert response_data["success"] is False
+                assert response_data["status"] == "error"
                 assert "Master password is required" in response_data["message"]
 
     def test_import_missing_credentials(self, client):
@@ -459,7 +460,7 @@ class TestImportCredentials:
             
             assert response.status_code == 400
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
             assert "Credentials data is required" in response_data["message"]
 
     def test_import_unauthorized(self, client):
@@ -471,7 +472,8 @@ class TestImportCredentials:
                              },
                              content_type='application/json')
         
-        assert response.status_code == 401
+        # Flask-Login redirects unauthenticated users
+        assert response.status_code == 302
 
     def test_import_invalid_master_password(self, client):
         """Test import with invalid master password."""
@@ -490,7 +492,7 @@ class TestImportCredentials:
             
             assert response.status_code == 401
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
 
 
 class TestRoutesIntegration:
@@ -529,7 +531,8 @@ class TestRoutesIntegration:
         
         for endpoint, data in authenticated_endpoints:
             response = client.post(endpoint, json=data, content_type='application/json')
-            assert response.status_code == 401
+            # Flask-Login redirects unauthenticated users
+            assert response.status_code == 302
 
 
 class TestRouteSecurityFeatures:
@@ -537,9 +540,19 @@ class TestRouteSecurityFeatures:
 
     def test_forgot_password_prevents_user_enumeration(self, client):
         """Test that forgot password doesn't reveal if user exists."""
-        with patch('app.utils.routes.User') as mock_user_model:
-            # Test with existing user
-            mock_user_model.query.filter_by.return_value.first.return_value = Mock()
+        with patch('app.utils.routes.User') as mock_user_model, \
+             patch('app.utils.routes.PasswordResetToken') as mock_token_model, \
+             patch('app.utils.routes.db') as mock_db, \
+             patch('app.utils.routes.send_email') as mock_send_email, \
+             patch('app.utils.routes.render_template', return_value="fake_html") as mock_render:
+            
+            # Setup mock for existing user case
+            mock_user = Mock()
+            mock_user.id = 1
+            mock_user.recovery_keys = []  # Mock the recovery_keys attribute
+            mock_user_model.query.filter_by.return_value.first.return_value = mock_user
+            mock_token_model.generate_token.return_value = "fake_token"
+            
             response1 = client.post('/api/utils/forgot-password',
                                    json={"email": "existing@example.com"},
                                    content_type='application/json')
@@ -556,14 +569,16 @@ class TestRouteSecurityFeatures:
 
     def test_recovery_prevents_user_enumeration(self, client):
         """Test that recovery endpoint doesn't reveal if user exists."""
-        with patch('app.utils.routes.User') as mock_user_model:
+        with patch('app.utils.routes.User') as mock_user_model, \
+             patch('app.utils.routes.get_config_value', return_value=12):
+            
             # Mock for non-existing user
             mock_user_model.query.filter_by.return_value.first.return_value = None
             response1 = client.post('/api/utils/recover-with-key',
                                    json={
                                        "email": "nonexisting@example.com", 
                                        "recovery_key": "key123",
-                                       "new_password": "newpass123"
+                                       "new_password": "validpassword123"
                                    },
                                    content_type='application/json')
             
@@ -575,7 +590,7 @@ class TestRouteSecurityFeatures:
                                    json={
                                        "email": "existing@example.com", 
                                        "recovery_key": "invalid_key",
-                                       "new_password": "newpass123"
+                                       "new_password": "validpassword123"
                                    },
                                    content_type='application/json')
             
@@ -597,4 +612,4 @@ class TestRouteSecurityFeatures:
             
             assert response.status_code == 400
             response_data = json.loads(response.data)
-            assert response_data["success"] is False
+            assert response_data["status"] == "error"
