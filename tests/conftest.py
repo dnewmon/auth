@@ -12,13 +12,13 @@ from config import TestingConfig
 @pytest.fixture(scope='session')
 def app():
     """Create a Flask application configured for testing."""
-    # Set required environment variables for testing
-    os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-testing')
-    os.environ.setdefault('JWT_SECRET_KEY', 'test-jwt-secret-key-for-testing')
-    os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
-    os.environ.setdefault('MAIL_SERVER', 'localhost')
-    os.environ.setdefault('MAIL_USERNAME', 'test@example.com')
-    os.environ.setdefault('MAIL_PASSWORD', 'testpassword')
+    # Set required environment variables for testing (force override)
+    os.environ['SECRET_KEY'] = 'test-secret-key-for-testing'
+    os.environ['JWT_SECRET_KEY'] = 'test-jwt-secret-key-for-testing'
+    os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
+    os.environ['MAIL_SERVER'] = 'localhost'
+    os.environ['MAIL_USERNAME'] = 'test@example.com'
+    os.environ['MAIL_PASSWORD'] = 'testpassword'
     
     # Create a temporary database file for testing
     db_fd, db_path = tempfile.mkstemp()

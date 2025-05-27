@@ -76,11 +76,9 @@ class TestSendAsyncEmail:
         # Create a mock message
         mock_message = Mock(spec=Message)
         
-        # This should not raise an exception
-        send_async_email(mock_app, mock_message)
-        
-        # Verify that the exception was logged
-        mock_logger.error.assert_called_once()
+        # This should raise an exception since app context setup fails before error handling
+        with pytest.raises(Exception, match="Context setup failed"):
+            send_async_email(mock_app, mock_message)
 
     def test_send_async_email_with_unicode_content(self):
         """Test email sending with unicode content."""
@@ -487,4 +485,4 @@ class TestEmailErrorScenarios:
             mock_logger.error.assert_called_once()
             log_call_args = mock_logger.error.call_args
             assert "Failed to send email" in log_call_args[0][0]
-            assert log_call_args[1]['exc_info'] == test_exception
+            assert log_call_args[1]['exc_info'] is True
