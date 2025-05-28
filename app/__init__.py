@@ -62,7 +62,7 @@ def create_app(config_name: str = "development") -> Flask:
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        return db.session.get(User, int(user_id))
 
     @user_loaded_from_request.connect
     def check_session_version(sender, user):

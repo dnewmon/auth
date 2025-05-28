@@ -118,7 +118,7 @@ class TestResetPasswordWithToken:
             mock_get_config.return_value = 8  # Min password length
             
             response = client.post('/api/utils/reset-password/valid_token',
-                                 json={"new_password": "newpassword123"},
+                                 json={"new_password": "validnewpassword123"},
                                  content_type='application/json')
             
             assert response.status_code == 200
@@ -127,7 +127,7 @@ class TestResetPasswordWithToken:
             assert "Password has been reset successfully" in response_data["data"]["message"]
             
             # Verify password was set
-            mock_token.user.set_password.assert_called_once_with("newpassword123")
+            mock_token.user.set_password.assert_called_once_with("validnewpassword123")
             
             # Verify token was marked as used
             mock_token.mark_as_used.assert_called_once()
@@ -149,7 +149,7 @@ class TestResetPasswordWithToken:
             mock_token_model.find_by_token.return_value = None
             
             response = client.post('/api/utils/reset-password/invalid_token',
-                                 json={"new_password": "newpassword123"},
+                                 json={"new_password": "validnewpassword123"},
                                  content_type='application/json')
             
             assert response.status_code == 400
@@ -179,7 +179,7 @@ class TestResetPasswordWithToken:
             
             response = client.post('/api/utils/reset-password/valid_token',
                                  json={
-                                     "new_password": "newpassword123",
+                                     "new_password": "validnewpassword123",
                                      "recovery_key": "valid_recovery_key"
                                  },
                                  content_type='application/json')
@@ -190,7 +190,7 @@ class TestResetPasswordWithToken:
             assert "credentials have been preserved" in response_data["data"]["message"]
             
             # Verify recovery was attempted
-            mock_token.user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "newpassword123")
+            mock_token.user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "validnewpassword123")
 
 
 class TestRecoverWithRecoveryKey:
@@ -214,7 +214,7 @@ class TestRecoverWithRecoveryKey:
                                  json={
                                      "email": "user@example.com",
                                      "recovery_key": "valid_recovery_key",
-                                     "new_password": "newpassword123"
+                                     "new_password": "validnewpassword123"
                                  },
                                  content_type='application/json')
             
@@ -224,7 +224,7 @@ class TestRecoverWithRecoveryKey:
             assert "Account recovered successfully" in response_data["data"]["message"]
             
             # Verify recovery was attempted
-            mock_user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "newpassword123")
+            mock_user.recover_with_recovery_key.assert_called_once_with("valid_recovery_key", "validnewpassword123")
 
     def test_recover_missing_fields(self, client):
         """Test account recovery with missing fields."""
@@ -253,7 +253,7 @@ class TestRecoverWithRecoveryKey:
                                  json={
                                      "email": "nonexistent@example.com",
                                      "recovery_key": "valid_recovery_key",
-                                     "new_password": "newpassword123"
+                                     "new_password": "validnewpassword123"
                                  },
                                  content_type='application/json')
             
@@ -273,7 +273,7 @@ class TestRecoverWithRecoveryKey:
                                  json={
                                      "email": "user@example.com",
                                      "recovery_key": "invalid_recovery_key",
-                                     "new_password": "newpassword123"
+                                     "new_password": "validnewpassword123"
                                  },
                                  content_type='application/json')
             
@@ -578,7 +578,7 @@ class TestRouteSecurityFeatures:
                                    json={
                                        "email": "nonexisting@example.com", 
                                        "recovery_key": "key123",
-                                       "new_password": "validpassword123"
+                                       "new_password": "validnewpassword123"
                                    },
                                    content_type='application/json')
             
@@ -590,7 +590,7 @@ class TestRouteSecurityFeatures:
                                    json={
                                        "email": "existing@example.com", 
                                        "recovery_key": "invalid_key",
-                                       "new_password": "validpassword123"
+                                       "new_password": "validnewpassword123"
                                    },
                                    content_type='application/json')
             
