@@ -54,7 +54,7 @@ jobs:
     - name: Install dependencies
       run: |
         cd ui
-        npm ci
+        npm install
     
     - name: Run linting
       run: |
