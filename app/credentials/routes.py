@@ -35,7 +35,7 @@ def verify_master_password():
         session[MASTER_PASSWORD_SESSION_KEY] = {"verified": True, "timestamp": int(time.time())}
         session.modified = True
 
-        return success_response("Master password verified.")
+        return success_response(message="Master password verified.")
     except ValueError as e:
         return error_response("Invalid master password.", 401)
 

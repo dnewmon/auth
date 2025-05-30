@@ -67,7 +67,7 @@ def register():
             "recovery_keys": recovery_keys,
             "recovery_message": "IMPORTANT: Please save these recovery keys in a secure location. They will be needed to recover your account if you forget your password. They will NOT be shown again.",
         }
-        return success_response(user_data, 201)  # 201 Created
+        return success_response(user_data, "User registered successfully", 201)  # 201 Created
     except IntegrityError as e:
         db.session.rollback()
         current_app.logger.error(f"Database integrity error during registration: {e}")
@@ -147,7 +147,7 @@ def login_verify_otp():
     if not otp_token:
         return error_response("Missing OTP token.", 400)
 
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user or not user.otp_enabled or not user.otp_secret:
         # Should not happen if session is managed correctly, but good to check
         session.pop(get_config_value("SESSION_KEY_OTP_USER_ID"), None)

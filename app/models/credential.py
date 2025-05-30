@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 class Credential(db.Model):
     __tablename__ = "credentials"
+    __mapper_args__ = {"confirm_deleted_rows": False}
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
