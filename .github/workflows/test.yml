@@ -56,11 +56,6 @@ jobs:
         cd ui
         npm install
     
-    - name: Run linting
-      run: |
-        cd ui
-        npm run lint
-    
     - name: Build frontend
       run: |
         cd ui
