@@ -1,5 +1,6 @@
 import logging
-from flask import Flask, session
+import os
+from flask import Flask, session, send_from_directory, send_file
 from config import config_by_name
 from .models import db
 from flask_migrate import Migrate
@@ -74,7 +75,7 @@ def create_app(config_name: str = "development") -> Flask:
                 return None
         return user
 
-    # Register Blueprints
+    # Register Blueprints (API routes first - they take precedence)
     from .auth import auth_bp
     from .credentials import credentials_bp
     from .users import users_bp
@@ -95,5 +96,31 @@ def create_app(config_name: str = "development") -> Flask:
     @app.route("/ping")
     def ping():
         return "Pong!"
+
+    # Static file serving for production frontend
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def serve_frontend(path):
+        """Serve the React frontend from ui/dist folder."""
+        # Skip API routes - they're handled by blueprints above
+        if path.startswith("api/"):
+            # This should not happen as blueprints are registered first,
+            # but just in case, return 404
+            from flask import abort
+            abort(404)
+        
+        dist_dir = os.path.join(os.path.dirname(app.root_path), "ui", "dist")
+        
+        # If path is empty, serve index.html
+        if path == "":
+            return send_file(os.path.join(dist_dir, "index.html"))
+        
+        # Check if the requested file exists in dist directory
+        file_path = os.path.join(dist_dir, path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return send_from_directory(dist_dir, path)
+        
+        # If file doesn't exist, serve index.html for SPA routing
+        return send_file(os.path.join(dist_dir, "index.html"))
 
     return app
