@@ -33,7 +33,7 @@ limiter = Limiter(
 
 def create_app(config_name: str = "development") -> Flask:
     """Application factory function."""
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder=None)  # Disable default static folder
     config_obj = config_by_name[config_name]
     app.config.from_object(config_obj)
 
@@ -42,7 +42,9 @@ def create_app(config_name: str = "development") -> Flask:
         raise RuntimeError("SECRET_KEY not set in configuration!")
 
     # Configure logging
-    logging.basicConfig(level=getattr(logging, config_obj.LOG_LEVEL.upper(), logging.INFO))
+    logging.basicConfig(
+        level=getattr(logging, config_obj.LOG_LEVEL.upper(), logging.INFO)
+    )
     app.logger.info(f"Starting app with '{config_name}' config.")
 
     # Initialize extensions
@@ -50,10 +52,10 @@ def create_app(config_name: str = "development") -> Flask:
     migrate.init_app(app, db)
     login_manager.init_app(app)
     mail.init_app(app)
-    
+
     # Always initialize limiter, but disable it for testing
     limiter.init_app(app)
-    
+
     # Disable rate limiting in testing mode
     if config_obj.TESTING:
         limiter.enabled = False
@@ -107,19 +109,20 @@ def create_app(config_name: str = "development") -> Flask:
             # This should not happen as blueprints are registered first,
             # but just in case, return 404
             from flask import abort
+
             abort(404)
-        
+
         dist_dir = os.path.join(os.path.dirname(app.root_path), "ui", "dist")
-        
+
         # If path is empty, serve index.html
         if path == "":
             return send_file(os.path.join(dist_dir, "index.html"))
-        
+
         # Check if the requested file exists in dist directory
         file_path = os.path.join(dist_dir, path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return send_from_directory(dist_dir, path)
-        
+
         # If file doesn't exist, serve index.html for SPA routing
         return send_file(os.path.join(dist_dir, "index.html"))
 

@@ -10,7 +10,9 @@ function LayoutContent() {
 
     const [checkAuth, , authState, authError] = useApi(async () => {
         const response = await AuthService.getCurrentUser();
-        setUsername(response.username);
+        if (response !== undefined) {
+            setUsername(response.username);
+        }
     });
 
     const [logout, , logoutState, logoutError] = useApi(async () => {
@@ -62,7 +64,7 @@ function LayoutContent() {
                 </Container>
             </Navbar>
             <Container className="mt-4">
-                {authError && authError.status !== 405 && <ApiErrorFallback api_error={authError} />}
+                {authError && authError.status !== 302 && <ApiErrorFallback api_error={authError} />}
 
                 <ApiErrorFallback api_error={logoutError} />
                 <ApiSuspense api_states={[authState, logoutState]} suspense={<Spinner />}>
