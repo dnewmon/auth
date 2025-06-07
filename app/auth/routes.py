@@ -110,13 +110,17 @@ def login():
     user = User.query.filter_by(username=username).first()
 
     if user and user.check_password(password):  # Uses Argon2 check
-        # Check if OTP is enabled
+        # Check if OTP is enabled (prioritize OTP as more secure)
         if user.otp_enabled:
             # Store user ID in session to indicate first factor success
             session[get_config_value("SESSION_KEY_OTP_USER_ID")] = user.id
             session.modified = True
             current_app.logger.info(f"User '{username}' passed first factor, OTP required.")
-            return success_response({"mfa_required": "otp"}, status_code=202)  # 202 Accepted
+            # Include email MFA availability for fallback
+            response_data = {"mfa_required": "otp"}
+            if user.email_mfa_enabled:
+                response_data["email_fallback_available"] = True
+            return success_response(response_data, status_code=202)  # 202 Accepted
         elif user.email_mfa_enabled:
             # Email MFA is enabled, send verification code
             try:
@@ -249,6 +253,42 @@ def login_verify_email():
 
     # Return success, no tokens needed for session-based auth
     return success_response({"message": "Login successful"})
+
+
+@auth_bp.route("/login/switch-to-email", methods=["POST"])
+@limiter.limit("10 per minute")
+def login_switch_to_email():
+    """Switch from OTP to email MFA fallback when both are enabled."""
+    user_id = session.get(get_config_value("SESSION_KEY_OTP_USER_ID"))
+    if not user_id:
+        return error_response("OTP authentication step not completed or session expired.", 401)
+
+    user = db.session.get(User, user_id)
+    if not user or not user.otp_enabled or not user.email_mfa_enabled:
+        session.pop(get_config_value("SESSION_KEY_OTP_USER_ID"), None)
+        session.modified = True
+        return error_response("Both OTP and email MFA must be enabled to use this fallback.", 400)
+
+    try:
+        # Generate and send email MFA code
+        verification_code = MfaVerificationCode.create_for_user(user.id, 'login')
+        
+        email_html = render_template('email/mfa_login_code.html', 
+                                     user=user, 
+                                     verification_code=verification_code.code)
+        send_email(user.email, "Login Verification Code", email_html)
+        
+        # Switch session markers from OTP to email MFA
+        session.pop(get_config_value("SESSION_KEY_OTP_USER_ID"), None)
+        session[get_config_value("SESSION_KEY_EMAIL_MFA_USER_ID")] = user.id
+        session.modified = True
+        
+        current_app.logger.info(f"User {user.id} switched from OTP to email MFA fallback.")
+        return success_response({"message": "Email verification code sent. Please check your inbox."})
+        
+    except Exception as e:
+        current_app.logger.error(f"Failed to send email MFA code for user {user.id}: {e}", exc_info=True)
+        return error_response("Failed to send verification code. Please try again.", 500)
 
 
 @auth_bp.route("/logout", methods=["POST"])

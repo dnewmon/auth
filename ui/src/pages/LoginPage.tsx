@@ -21,6 +21,7 @@ export default function LoginPage() {
     const [showOtpForm, setShowOtpForm] = useState(false);
     const [emailMfaCode, setEmailMfaCode] = useState('');
     const [showEmailMfaForm, setShowEmailMfaForm] = useState(false);
+    const [emailFallbackAvailable, setEmailFallbackAvailable] = useState(false);
 
     const [handleLogin, , loginState, loginError] = useApi(async () => {
         const response = await AuthService.login(formData);
@@ -32,6 +33,7 @@ export default function LoginPage() {
             if (response.mfa_required === 'otp') {
                 go_home = false;
                 setShowOtpForm(true);
+                setEmailFallbackAvailable(response.email_fallback_available || false);
             } else if (response.mfa_required === 'email') {
                 go_home = false;
                 setShowEmailMfaForm(true);
@@ -58,6 +60,14 @@ export default function LoginPage() {
         return response;
     });
 
+    const [handleSwitchToEmail, , switchToEmailState, switchToEmailError] = useApi(async () => {
+        const response = await AuthService.switchToEmailMfa();
+        setShowOtpForm(false);
+        setShowEmailMfaForm(true);
+        setOtpToken('');
+        return response;
+    });
+
     return (
         <Container className="mt-5">
             <Row className="justify-content-center">
@@ -65,7 +75,7 @@ export default function LoginPage() {
                     <Card>
                         <Card.Body>
                             <h2 className="text-center mb-4">Login</h2>
-                            <ApiSuspense api_states={[loginState, otpState, emailMfaState]} suspense={<Spinner />}>
+                            <ApiSuspense api_states={[loginState, otpState, emailMfaState, switchToEmailState]} suspense={<Spinner />}>
                                 {!showOtpForm && !showEmailMfaForm ? (
                                     <Form
                                         onSubmit={(e) => {
@@ -119,12 +129,22 @@ export default function LoginPage() {
                                             <Button variant="primary" type="submit" className="w-100">
                                                 Verify
                                             </Button>
+                                            {emailFallbackAvailable && (
+                                                <Button
+                                                    variant="secondary"
+                                                    className="w-100 mt-2"
+                                                    onClick={handleSwitchToEmail}
+                                                >
+                                                    Use Email Verification Instead
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="link"
                                                 className="w-100 mt-2"
                                                 onClick={() => {
                                                     setShowOtpForm(false);
                                                     setOtpToken('');
+                                                    setEmailFallbackAvailable(false);
                                                 }}
                                             >
                                                 Back to Login
@@ -174,6 +194,7 @@ export default function LoginPage() {
                             <ApiErrorFallback api_error={loginError} />
                             <ApiErrorFallback api_error={otpError} />
                             <ApiErrorFallback api_error={emailMfaError} />
+                            <ApiErrorFallback api_error={switchToEmailError} />
                         </Card.Body>
                     </Card>
                 </Col>

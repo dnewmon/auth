@@ -34,6 +34,7 @@ export interface UserData {
 
 export interface MfaRequiredData {
     mfa_required: 'otp' | 'email';
+    email_fallback_available?: boolean;
 }
 
 export interface LoginSuccessData {
@@ -139,6 +140,11 @@ export class AuthService {
 
     static async resendVerificationEmail(): Promise<{ message: string }> {
         const response = await axios.post<MessageResponse>(`${this.BASE_URL}/resend-verification`);
+        return response.data.data;
+    }
+
+    static async switchToEmailMfa(): Promise<{ message: string }> {
+        const response = await axios.post<MessageResponse>(`${this.BASE_URL}/login/switch-to-email`);
         return response.data.data;
     }
 }

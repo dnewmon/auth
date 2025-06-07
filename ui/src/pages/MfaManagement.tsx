@@ -121,6 +121,22 @@ export default function MfaManagement() {
                 <Card.Body>
                     <Card.Title>Email Multi-Factor Authentication</Card.Title>
                     <Card.Text>Receive verification codes via email for login and account changes.</Card.Text>
+                    
+                    <div className="mb-3">
+                        <strong>Email Status: </strong>
+                        {mfaStatus?.email_verified ? (
+                            <span className="text-success">
+                                <i className="bi bi-check-circle-fill me-1"></i>
+                                Verified
+                            </span>
+                        ) : (
+                            <span className="text-warning">
+                                <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                                Not Verified
+                            </span>
+                        )}
+                    </div>
+
                     {!mfaStatus?.email_verified && (
                         <Alert variant="warning" className="mb-3">
                             <small>Email verification required before enabling email MFA.</small>
