@@ -613,3 +613,190 @@ class TestRouteSecurityFeatures:
             assert response.status_code == 400
             response_data = json.loads(response.data)
             assert response_data["status"] == "error"
+
+
+class TestPasswordHealthReport:
+    """Tests for the password health report endpoint."""
+    
+    def test_password_health_report_success(self, client):
+        """Test successful password health report generation."""
+        with patch('app.utils.routes.current_user') as mock_current_user, \
+             patch('app.utils.routes.Credential') as mock_credential_model, \
+             patch('app.utils.routes.decrypt_data') as mock_decrypt, \
+             patch('app.utils.routes.analyze_password_strength') as mock_analyze:
+            
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_current_user.get_master_key = Mock(return_value="master_key")
+            
+            # Use recent dates for test credentials
+            from datetime import datetime, timedelta
+            # Use timezone-naive datetime to match database behavior
+            now = datetime.now()
+            
+            # Create mock credentials with various password strengths
+            mock_cred1 = Mock()
+            mock_cred1.id = 1
+            mock_cred1.service_name = "Gmail"
+            mock_cred1.username = "user@gmail.com"
+            mock_cred1.encrypted_password = "encrypted1"
+            mock_cred1.created_at = now - timedelta(days=30)  # Recent password
+            mock_cred1.updated_at = None
+            
+            mock_cred2 = Mock()
+            mock_cred2.id = 2
+            mock_cred2.service_name = "Facebook"
+            mock_cred2.username = "user@example.com"
+            mock_cred2.encrypted_password = "encrypted2"
+            mock_cred2.created_at = now - timedelta(days=120)  # Old password (>90 days)
+            mock_cred2.updated_at = None
+            
+            mock_credential_model.query.filter_by.return_value.all.return_value = [mock_cred1, mock_cred2]
+            
+            # Mock decryption to return different passwords
+            mock_decrypt.side_effect = ["strongpass123!", "weak"]
+            
+            # Mock password strength analysis
+            def mock_strength_analysis(password):
+                if password == "strongpass123!":
+                    return {"score": 85, "category": "Strong", "feedback": ["Good length", "Good variety"]}
+                else:
+                    return {"score": 30, "category": "Weak", "feedback": ["Too short", "Poor variety"]}
+            
+            mock_analyze.side_effect = mock_strength_analysis
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/password-health-report',
+                                     json={"master_password": "master123"},
+                                     content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["status"] == "success"
+            
+            data = response_data["data"]
+            assert data["total_credentials"] == 2
+            assert data["summary"]["weak_passwords"] == 1
+            assert data["summary"]["strong_passwords"] == 1
+            assert data["summary"]["old_passwords"] == 1
+            assert len(data["credentials_analysis"]) == 2
+            assert len(data["recommendations"]) > 0
+    
+    def test_password_health_report_no_credentials(self, client):
+        """Test password health report with no credentials."""
+        with patch('app.utils.routes.current_user') as mock_current_user, \
+             patch('app.utils.routes.Credential') as mock_credential_model:
+            
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_current_user.get_master_key = Mock(return_value="master_key")
+            mock_credential_model.query.filter_by.return_value.all.return_value = []
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/password-health-report',
+                                     json={"master_password": "master123"},
+                                     content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            assert response_data["status"] == "success"
+            
+            data = response_data["data"]
+            assert data["total_credentials"] == 0
+            assert data["health_score"] == 100
+            assert data["recommendations"] == ['Start adding credentials to get a security analysis']
+    
+    def test_password_health_report_missing_master_password(self, client):
+        """Test password health report with missing master password."""
+        with patch('app.utils.routes.current_user') as mock_current_user:
+            mock_current_user.is_authenticated = True
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/password-health-report',
+                                     json={},
+                                     content_type='application/json')
+            
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["status"] == "error"
+            assert "Master password is required" in response_data["message"]
+    
+    def test_password_health_report_invalid_master_password(self, client):
+        """Test password health report with invalid master password."""
+        with patch('app.utils.routes.current_user') as mock_current_user:
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_current_user.get_master_key = Mock(side_effect=ValueError("Invalid password"))
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/password-health-report',
+                                     json={"master_password": "wrongpassword"},
+                                     content_type='application/json')
+            
+            assert response.status_code == 401
+            response_data = json.loads(response.data)
+            assert response_data["status"] == "error"
+            assert "Invalid password" in response_data["message"]
+    
+    def test_password_health_report_reused_passwords(self, client):
+        """Test password health report detects reused passwords."""
+        with patch('app.utils.routes.current_user') as mock_current_user, \
+             patch('app.utils.routes.Credential') as mock_credential_model, \
+             patch('app.utils.routes.decrypt_data') as mock_decrypt, \
+             patch('app.utils.routes.analyze_password_strength') as mock_analyze:
+            
+            mock_current_user.id = 1
+            mock_current_user.is_authenticated = True
+            mock_current_user.get_master_key = Mock(return_value="master_key")
+            
+            # Create mock credentials with same password
+            from datetime import datetime, timedelta
+            # Use timezone-naive datetime to match database behavior
+            now = datetime.now()
+            
+            mock_cred1 = Mock()
+            mock_cred1.id = 1
+            mock_cred1.service_name = "Gmail"
+            mock_cred1.username = "user@gmail.com"
+            mock_cred1.encrypted_password = "encrypted1"
+            mock_cred1.created_at = now - timedelta(days=30)
+            mock_cred1.updated_at = None
+            
+            mock_cred2 = Mock()
+            mock_cred2.id = 2
+            mock_cred2.service_name = "Facebook"
+            mock_cred2.username = "user@example.com"
+            mock_cred2.encrypted_password = "encrypted2"
+            mock_cred2.created_at = now - timedelta(days=30)
+            mock_cred2.updated_at = None
+            
+            mock_credential_model.query.filter_by.return_value.all.return_value = [mock_cred1, mock_cred2]
+            
+            # Both credentials have the same password (reused)
+            mock_decrypt.return_value = "reusedpassword123"
+            mock_analyze.return_value = {"score": 75, "category": "Good", "feedback": ["Good length"]}
+            
+            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+                response = client.post('/api/utils/password-health-report',
+                                     json={"master_password": "master123"},
+                                     content_type='application/json')
+            
+            assert response.status_code == 200
+            response_data = json.loads(response.data)
+            data = response_data["data"]
+            
+            # Should detect password reuse
+            assert data["summary"]["reused_passwords"] > 0
+            # Check that reuse is flagged in analysis
+            reused_count = sum(1 for cred in data["credentials_analysis"] 
+                             if "issues" in cred and "Password reused" in cred["issues"])
+            assert reused_count > 0
+    
+    def test_password_health_report_unauthorized(self, client):
+        """Test password health report when user is not authenticated."""
+        response = client.post('/api/utils/password-health-report',
+                             json={"master_password": "master123"},
+                             content_type='application/json')
+        
+        # Flask-Login redirects unauthenticated users
+        assert response.status_code == 302

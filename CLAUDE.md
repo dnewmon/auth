@@ -3,14 +3,17 @@
 ## Examples of When to Use the Todo List
 
 <example>
+User: Work on the project.
 Assistant: Everything is finished.
 
 *Creates todo list with more items:*
 
-1. Let me explore the codebase to identify any obvious issues
-2. Let me explore the codebase to find undocumented functionality not included in `./docs/`
-3. Let me ideate on the project and find new features to add.
-4. Let me ideate on what would make the product more valuable.
+1. Explore the codebase to identify any obvious issues
+2. Explore the codebase for incomplete features
+3. Explore the codebase to find undocumented functionality not included in `./docs/`
+4. Ideate on the project and find new features to add.
+5. Ideate on what would make the product more valuable.
+6. Start over and do it again.
 
 *Begins working on the first task*
 
@@ -173,3 +176,9 @@ The application uses environment-based configuration with support for:
 - RESTful API design
 - Comprehensive error handling
 - Rate limiting and security monitoring
+
+## Operational Notes
+
+- After updating code in `./ui/`, run `npm run build` and `npm run lint` to ensure there are no issues.
+- After updating code in `./app/`, run `pytest` to verify the tests work.
+- If you are about to finish the last Todo List item, generate more to work on.

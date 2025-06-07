@@ -250,8 +250,8 @@ class TestLoginRoute:
     @patch('app.auth.routes.send_email')
     @patch('app.auth.routes.render_template')
     @patch('app.auth.routes.get_config_value')
-    def test_login_with_email_notification(self, mock_config, mock_render, mock_send_email, client, app_context):
-        """Test login with email notification enabled."""
+    def test_login_with_email_mfa(self, mock_config, mock_render, mock_send_email, client, app_context):
+        """Test login with email MFA enabled."""
         username = make_unique_username()
         email = f'{uuid.uuid4()}@example.com'
         
@@ -262,14 +262,17 @@ class TestLoginRoute:
         db.session.add(user)
         db.session.commit()
         
-        mock_config.side_effect = lambda key: 'email/login_notification.html' if 'EMAIL_LOGIN_NOTIFICATION_TEMPLATE' in key else None
-        mock_render.return_value = '<html>Login notification</html>'
+        mock_config.side_effect = lambda key: 'email/mfa_login_code.html'
+        mock_render.return_value = '<html>MFA verification code</html>'
         
         response = client.post('/api/auth/login',
                              json={'username': username, 'password': 'validpassword123'})
         
-        assert response.status_code == 200
-        mock_send_email.assert_called_once_with(email, "Security Alert: New Login Detected", '<html>Login notification</html>')
+        assert response.status_code == 202  # 202 because email MFA is enabled
+        data = response.get_json()
+        assert data['data']['mfa_required'] == 'email'
+        # Email MFA sends login verification code
+        mock_send_email.assert_called_once_with(user.email, "Login Verification Code", '<html>MFA verification code</html>')
 
 
 class TestLoginVerifyOtpRoute:

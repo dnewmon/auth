@@ -349,6 +349,109 @@ Generate new recovery keys for the authenticated user. This invalidates all exis
     }
     ```
 
+### 8. Verify Email MFA
+
+Complete authentication with email MFA code after initial login.
+
+-   **URL:** `/login/verify-email`
+-   **Method:** `POST`
+-   **Rate Limit:** 10 requests per minute
+
+#### Request Body
+
+```json
+{
+    "verification_code": "string"
+}
+```
+
+#### Success Response (200 OK)
+
+```json
+{
+    "success": true,
+    "data": {
+        "message": "Login successful"
+    }
+}
+```
+
+### 9. Switch to Email MFA
+
+Switch from OTP to email MFA for users who have both enabled.
+
+-   **URL:** `/login/switch-to-email`
+-   **Method:** `POST`
+-   **Rate Limit:** 10 requests per minute
+
+#### Success Response (200 OK)
+
+```json
+{
+    "success": true,
+    "data": {
+        "message": "Verification code sent to your email address"
+    }
+}
+```
+
+### 10. Verify Email
+
+Verify user email address with verification token.
+
+-   **URL:** `/verify-email/<token>`
+-   **Method:** `GET`
+
+#### Success Response (200 OK)
+
+```json
+{
+    "success": true,
+    "data": {
+        "message": "Email verified successfully"
+    }
+}
+```
+
+### 11. Resend Email Verification
+
+Resend email verification for the authenticated user.
+
+-   **URL:** `/resend-verification`
+-   **Method:** `POST`
+-   **Authentication Required:** Yes
+-   **Rate Limit:** 3 requests per hour
+
+#### Success Response (200 OK)
+
+```json
+{
+    "success": true,
+    "data": {
+        "message": "Verification email sent successfully"
+    }
+}
+```
+
+### 12. Email Verification Status
+
+Check email verification status for the authenticated user.
+
+-   **URL:** `/email-verification-status`
+-   **Method:** `GET`
+-   **Authentication Required:** Yes
+
+#### Success Response (200 OK)
+
+```json
+{
+    "success": true,
+    "data": {
+        "email_verified": boolean
+    }
+}
+```
+
 ## Authentication Notes
 
 1. The API uses session-based authentication.

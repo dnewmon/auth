@@ -6,9 +6,12 @@ from flask import request, jsonify, url_for, render_template, current_app, Respo
 from flask_login import login_required, current_user, logout_user
 import io
 import csv
+import json
 import os
 import tempfile
+import time
 import pyminizip
+from datetime import datetime, timezone
 from . import utils_bp
 from ..models import db
 from ..models.user import User
@@ -363,6 +366,250 @@ def import_credentials():
         return error_response("Failed to import credentials.", 500)
 
 
+@utils_bp.route("/backup", methods=["POST"])
+@login_required
+@limiter.limit("3 per hour")
+def create_backup():
+    """
+    Create a comprehensive backup of user data including credentials, settings, and metadata.
+    Returns a password-protected ZIP file containing all user data.
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("Request data is required.", 400)
+
+    if not data.get("master_password"):
+        return error_response("Master password is required to create backup.", 400)
+
+    if not data.get("backup_password"):
+        return error_response("Backup password is required to protect the backup file.", 400)
+
+    try:
+        # Verify master password
+        try:
+            master_key = current_user.get_master_key(data["master_password"])
+        except ValueError as e:
+            return error_response(str(e), 401)
+
+        # Create backup data structure
+        backup_data = {
+            "version": "1.0",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "user_info": {
+                "username": current_user.username,
+                "email": current_user.email,
+                "created_at": current_user.created_at.isoformat(),
+                "otp_enabled": current_user.otp_enabled,
+                "email_mfa_enabled": current_user.email_mfa_enabled
+            },
+            "credentials": [],
+            "shared_credentials_sent": [],
+            "shared_credentials_received": []
+        }
+
+        # Export credentials
+        credentials = Credential.query.filter_by(user_id=current_user.id).all()
+        for cred in credentials:
+            try:
+                decrypted_password = decrypt_data(master_key, cred.encrypted_password)
+                backup_data["credentials"].append({
+                    "service_name": cred.service_name,
+                    "service_url": cred.service_url,
+                    "username": cred.username,
+                    "password": decrypted_password,
+                    "notes": cred.notes,
+                    "category": cred.category,
+                    "created_at": cred.created_at.isoformat(),
+                    "updated_at": cred.updated_at.isoformat()
+                })
+            except Exception as e:
+                current_app.logger.error(f"Error decrypting credential {cred.id}: {e}", exc_info=True)
+                return error_response("Failed to decrypt one or more credentials.", 500)
+
+        # Export shared credentials metadata (sent by user)
+        from ..models.shared_credential import SharedCredential
+        sent_shares = SharedCredential.query.filter_by(owner_id=current_user.id).all()
+        for share in sent_shares:
+            backup_data["shared_credentials_sent"].append({
+                "credential_service_name": share.credential.service_name,
+                "recipient_email": share.recipient.email,
+                "status": share.status,
+                "can_view": share.can_view,
+                "can_edit": share.can_edit,
+                "message": share.message,
+                "created_at": share.created_at.isoformat(),
+                "expires_at": share.expires_at.isoformat() if share.expires_at else None
+            })
+
+        # Export received shares metadata
+        received_shares = SharedCredential.query.filter_by(recipient_id=current_user.id).all()
+        for share in received_shares:
+            backup_data["shared_credentials_received"].append({
+                "credential_service_name": share.credential.service_name,
+                "owner_email": share.owner.email,
+                "status": share.status,
+                "can_view": share.can_view,
+                "can_edit": share.can_edit,
+                "message": share.message,
+                "created_at": share.created_at.isoformat(),
+                "accepted_at": share.accepted_at.isoformat() if share.accepted_at else None
+            })
+
+        # Create temporary JSON file
+        backup_json = json.dumps(backup_data, indent=2)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_json:
+            temp_json.write(backup_json.encode())
+            temp_json_path = temp_json.name
+
+        # Create password-protected ZIP
+        temp_zip_path = os.path.join(tempfile.gettempdir(), f"user_backup_{current_user.id}_{int(time.time())}.zip")
+        pyminizip.compress(temp_json_path, f"backup_{current_user.username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", 
+                          temp_zip_path, data["backup_password"], 5)
+
+        # Read the zip file and create response
+        with open(temp_zip_path, "rb") as zip_file:
+            response = make_response(zip_file.read())
+
+        # Clean up temporary files
+        os.unlink(temp_json_path)
+        os.unlink(temp_zip_path)
+
+        response.headers.set("Content-Type", "application/zip")
+        response.headers.set("Content-Disposition", "attachment", 
+                           filename=f"backup_{current_user.username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip")
+
+        return response
+
+    except Exception as e:
+        # Clean up any temporary files in case of error
+        if "temp_json_path" in locals() and os.path.exists(temp_json_path):
+            os.unlink(temp_json_path)
+        if "temp_zip_path" in locals() and os.path.exists(temp_zip_path):
+            os.unlink(temp_zip_path)
+
+        current_app.logger.error(f"Error during backup creation: {e}", exc_info=True)
+        return error_response("Failed to create backup.", 500)
+
+
+@utils_bp.route("/restore", methods=["POST"])
+@login_required  
+@limiter.limit("2 per hour")
+def restore_backup():
+    """
+    Restore user data from a backup file.
+    Expects backup_data (JSON) and master_password in request.
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("Request data is required.", 400)
+
+    if not data.get("master_password"):
+        return error_response("Master password is required for restore.", 400)
+
+    if not data.get("backup_data"):
+        return error_response("Backup data is required.", 400)
+
+    # Options for restore behavior
+    merge_credentials = data.get("merge_credentials", True)  # True to merge, False to replace
+    skip_existing = data.get("skip_existing", True)  # Skip credentials that already exist
+
+    try:
+        # Verify master password
+        try:
+            master_key = current_user.get_master_key(data["master_password"])
+        except ValueError as e:
+            return error_response(str(e), 401)
+
+        backup_data = data["backup_data"]
+        
+        # Validate backup data format
+        if not isinstance(backup_data, dict) or "credentials" not in backup_data:
+            return error_response("Invalid backup data format.", 400)
+
+        restored_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        # Restore credentials
+        for cred_data in backup_data.get("credentials", []):
+            try:
+                # Check if credential already exists (by service_name and username)
+                existing_cred = Credential.query.filter_by(
+                    user_id=current_user.id,
+                    service_name=cred_data.get("service_name", ""),
+                    username=cred_data.get("username", "")
+                ).first()
+
+                if existing_cred and skip_existing:
+                    skipped_count += 1
+                    continue
+
+                # Create new credential or update existing
+                if existing_cred and not skip_existing:
+                    credential = existing_cred
+                else:
+                    credential = Credential(user_id=current_user.id)
+
+                # Set credential data
+                credential.service_name = cred_data.get("service_name", "")
+                credential.service_url = cred_data.get("service_url")
+                credential.username = cred_data.get("username", "")
+                credential.notes = cred_data.get("notes")
+                credential.category = cred_data.get("category")
+
+                # Encrypt and store the password
+                if "password" in cred_data and cred_data.get("password") is not None:
+                    credential.encrypted_password = encrypt_data(master_key, cred_data["password"])
+                else:
+                    credential.encrypted_password = encrypt_data(master_key, "")
+
+                if not existing_cred:
+                    db.session.add(credential)
+                
+                restored_count += 1
+
+            except Exception as e:
+                current_app.logger.error(f"Error restoring credential {cred_data.get('service_name', 'unknown')}: {e}", exc_info=True)
+                error_count += 1
+
+        db.session.commit()
+
+        # Log the restore operation
+        from ..models.audit_log import AuditLog
+        audit_log = AuditLog(
+            user_id=current_user.id,
+            event_type="backup_restore",
+            message=f"Restored {restored_count} credentials, skipped {skipped_count}, errors {error_count}",
+            ip_address=request.headers.get('X-Forwarded-For', request.remote_addr)
+        )
+        db.session.add(audit_log)
+        db.session.commit()
+
+        return success_response({
+            "message": "Backup restored successfully",
+            "restored_count": restored_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count,
+            "backup_version": backup_data.get("version", "unknown"),
+            "backup_created_at": backup_data.get("created_at")
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during backup restore: {e}", exc_info=True)
+        return error_response("Failed to restore backup.", 500)
+
+
+@utils_bp.route("/password-policy", methods=["GET"])
+@login_required
+def get_password_policy():
+    """Get the current password policy configuration."""
+    from .password_policy import get_password_policy
+    
+    policy = get_password_policy()
+    return success_response(policy)
+
+
 @utils_bp.route("/password-generator", methods=["POST"])
 @login_required
 @limiter.limit("50 per minute")
@@ -672,3 +919,151 @@ def get_security_summary():
     except Exception as e:
         current_app.logger.error(f"Error generating security summary: {e}", exc_info=True)
         return error_response("Failed to generate security summary", 500)
+
+
+@utils_bp.route("/password-health-report", methods=["POST"])
+@login_required
+@limiter.limit("5 per minute")
+def get_password_health_report():
+    """Generate a comprehensive password health report for the user's credentials."""
+    data = request.get_json()
+    if not data or not data.get("master_password"):
+        return error_response("Master password is required", 400)
+    
+    try:
+        # Get master encryption key using password
+        try:
+            master_key = current_user.get_master_key(data["master_password"])
+        except ValueError as e:
+            return error_response(str(e), 401)
+        
+        # Get all credentials
+        credentials = Credential.query.filter_by(user_id=current_user.id).all()
+        if not credentials:
+            return success_response({
+                'total_credentials': 0,
+                'health_score': 100,
+                'summary': {
+                    'weak_passwords': 0,
+                    'reused_passwords': 0,
+                    'old_passwords': 0,
+                    'strong_passwords': 0
+                },
+                'recommendations': ['Start adding credentials to get a security analysis'],
+                'credentials_analysis': []
+            })
+        
+        # Analyze each credential
+        password_analysis = []
+        decrypted_passwords = []
+        weak_count = 0
+        strong_count = 0
+        
+        for cred in credentials:
+            try:
+                decrypted_password = decrypt_data(master_key, cred.encrypted_password)
+                decrypted_passwords.append(decrypted_password)
+                
+                # Analyze password strength
+                strength_analysis = analyze_password_strength(decrypted_password)
+                
+                credential_info = {
+                    'id': cred.id,
+                    'service_name': cred.service_name,
+                    'username': cred.username,
+                    'last_updated': cred.updated_at.isoformat() if cred.updated_at else cred.created_at.isoformat(),
+                    'strength': strength_analysis
+                }
+                
+                if strength_analysis['score'] < 60:
+                    weak_count += 1
+                    credential_info['issues'] = ['Weak password']
+                elif strength_analysis['score'] >= 80:
+                    strong_count += 1
+                
+                password_analysis.append(credential_info)
+                
+            except Exception as e:
+                current_app.logger.error(f"Error analyzing credential {cred.id}: {e}")
+                password_analysis.append({
+                    'id': cred.id,
+                    'service_name': cred.service_name,
+                    'username': cred.username,
+                    'error': 'Could not analyze password'
+                })
+        
+        # Check for password reuse
+        password_counts = {}
+        for pwd in decrypted_passwords:
+            password_counts[pwd] = password_counts.get(pwd, 0) + 1
+        
+        reused_passwords = sum(1 for count in password_counts.values() if count > 1)
+        reused_count = len([pwd for pwd, count in password_counts.items() if count > 1])
+        
+        # Mark reused passwords in analysis
+        for analysis in password_analysis:
+            if 'error' not in analysis:
+                # Find the actual password for this credential to check reuse
+                for cred in credentials:
+                    if cred.id == analysis['id']:
+                        try:
+                            pwd = decrypt_data(master_key, cred.encrypted_password)
+                            if password_counts.get(pwd, 0) > 1:
+                                if 'issues' not in analysis:
+                                    analysis['issues'] = []
+                                analysis['issues'].append('Password reused')
+                        except:
+                            pass
+                        break
+        
+        # Check for old passwords (older than 90 days)
+        from datetime import datetime, timedelta
+        # Use timezone-naive datetime since database timestamps are timezone-naive
+        old_threshold_naive = datetime.now() - timedelta(days=90)
+        old_count = sum(1 for cred in credentials 
+                       if (cred.updated_at or cred.created_at) < old_threshold_naive)
+        
+        # Mark old passwords
+        for analysis in password_analysis:
+            if 'error' not in analysis:
+                for cred in credentials:
+                    if cred.id == analysis['id']:
+                        last_update = cred.updated_at or cred.created_at
+                        if last_update < old_threshold_naive:
+                            if 'issues' not in analysis:
+                                analysis['issues'] = []
+                            analysis['issues'].append('Password not updated in 90+ days')
+                        break
+        
+        # Calculate overall health score
+        total_issues = weak_count + reused_count + old_count
+        max_possible_issues = len(credentials) * 3  # 3 types of issues per credential
+        health_score = max(0, 100 - (total_issues * 100 // max(max_possible_issues, 1)))
+        
+        # Generate recommendations
+        recommendations = []
+        if weak_count > 0:
+            recommendations.append(f"Update {weak_count} weak password(s) with stronger alternatives")
+        if reused_count > 0:
+            recommendations.append(f"Create unique passwords for {reused_passwords} credential(s) that share passwords")
+        if old_count > 0:
+            recommendations.append(f"Consider updating {old_count} password(s) that haven't been changed in 90+ days")
+        if not recommendations:
+            recommendations.append("Great job! Your password security looks good")
+        
+        return success_response({
+            'total_credentials': len(credentials),
+            'health_score': health_score,
+            'summary': {
+                'weak_passwords': weak_count,
+                'reused_passwords': reused_passwords,
+                'old_passwords': old_count,
+                'strong_passwords': strong_count
+            },
+            'recommendations': recommendations,
+            'credentials_analysis': password_analysis
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error generating password health report: {e}", exc_info=True)
+        return error_response("Failed to generate password health report", 500)

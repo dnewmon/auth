@@ -5,5 +5,6 @@ from .password_reset_token import PasswordResetToken
 from .email_verification_token import EmailVerificationToken
 from .mfa_verification_code import MfaVerificationCode
 from .audit_log import AuditLog
+from .shared_credential import SharedCredential
 
-__all__ = ['db', 'User', 'Credential', 'PasswordResetToken', 'EmailVerificationToken', 'MfaVerificationCode', 'AuditLog']
+__all__ = ['db', 'User', 'Credential', 'PasswordResetToken', 'EmailVerificationToken', 'MfaVerificationCode', 'AuditLog', 'SharedCredential']

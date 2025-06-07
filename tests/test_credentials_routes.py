@@ -235,7 +235,7 @@ class TestCreateCredential:
                     'service_name': 'New Service',
                     'service_url': 'https://newservice.com',
                     'username': 'newuser',
-                    'password': 'newpassword',
+                    'password': 'NewPassword84!',
                     'notes': 'New notes',
                     'category': 'personal',
                     'master_password': 'testpassword'
@@ -255,15 +255,15 @@ class TestCreateCredential:
                 assert data['data']['category'] == 'personal'
                 assert 'id' in data['data']
 
-    def test_create_credential_without_master_verification(self, client, test_user):
-        """Test credential creation without master password verification."""
+    def test_create_credential_with_invalid_master_password(self, client, test_user):
+        """Test credential creation with invalid master password."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
                 credential_data = {
                     'service_name': 'New Service',
                     'username': 'newuser',
-                    'password': 'newpassword',
-                    'master_password': 'testpassword'
+                    'password': 'NewPassword84!',
+                    'master_password': 'wrongpassword'  # Invalid master password
                 }
                 
                 response = client.post(
@@ -275,7 +275,7 @@ class TestCreateCredential:
                 assert response.status_code == 401
                 data = json.loads(response.data)
                 assert data['status'] == "error"
-                assert data['message'] == "Master password verification required."
+                assert "Invalid master password" in data['message']
 
     def test_create_credential_missing_required_fields(self, client, test_user):
         """Test credential creation with missing required fields."""
@@ -312,7 +312,7 @@ class TestCreateCredential:
         credential_data = {
             'service_name': 'New Service',
             'username': 'newuser',
-            'password': 'newpassword',
+            'password': 'NewPassword84!',
             'master_password': 'testpassword'
         }
         

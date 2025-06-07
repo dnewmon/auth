@@ -34,7 +34,14 @@
         <div class="container">
             <div class="header">Security Alert: New Login Detected</div>
             <p>Hello {{ user.username }},</p>
-            <p>We detected a new login to your account.</p>
+            <p>We detected a new login to your account with the following details:</p>
+            <ul>
+                <li><strong>Time:</strong> {{ login_time.strftime('%Y-%m-%d %H:%M:%S UTC') if login_time else 'Unknown' }}</li>
+                <li><strong>IP Address:</strong> {{ ip_address or 'Unknown' }}</li>
+                {% if mfa_method %}
+                <li><strong>Authentication Method:</strong> {{ mfa_method }} MFA</li>
+                {% endif %}
+            </ul>
             <p>If this was you, you can safely ignore this email.</p>
             <p>
                 If you do not recognize this activity, please secure your account immediately by changing your password and consider enabling multi-factor authentication if you

@@ -11,6 +11,7 @@ import pyotp  # Add pyotp import
 from email_validator import validate_email, EmailNotValidError
 from .. import limiter
 from ..models.config import get_config_value
+from datetime import datetime, timezone
 
 
 @auth_bp.route("/register", methods=["POST"])
@@ -153,6 +154,27 @@ def login():
 
             current_app.logger.info(f"User '{username}' logged in successfully (no MFA).")
 
+            # Send login notification email
+            try:
+                template_path = get_config_value("EMAIL_LOGIN_NOTIFICATION_TEMPLATE")
+                if template_path:
+                    # Get user IP address
+                    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+                    login_time = datetime.now(timezone.utc)
+                    
+                    email_html = render_template(template_path, 
+                                               user=user, 
+                                               login_time=login_time,
+                                               ip_address=user_ip)
+                    
+                    send_email(to=user.email, 
+                             subject="Security Alert: New Login Detected", 
+                             template=email_html)
+                    current_app.logger.info(f"Login notification sent to {user.email}")
+            except Exception as e:
+                # Don't fail login if notification fails
+                current_app.logger.error(f"Failed to send login notification to {user.email}: {e}", exc_info=True)
+
             # Return success, no tokens needed for session-based auth
             return success_response({"message": "Login successful"})
     else:
@@ -197,6 +219,28 @@ def login_verify_otp():
         user.update_last_login()
 
         current_app.logger.info(f"User ID '{user_id}' successfully authenticated with OTP.")
+
+        # Send login notification email
+        try:
+            template_path = get_config_value("EMAIL_LOGIN_NOTIFICATION_TEMPLATE")
+            if template_path:
+                # Get user IP address
+                user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+                login_time = datetime.now(timezone.utc)
+                
+                email_html = render_template(template_path, 
+                                           user=user, 
+                                           login_time=login_time,
+                                           ip_address=user_ip,
+                                           mfa_method="TOTP")
+                
+                send_email(to=user.email, 
+                         subject="Security Alert: New Login Detected", 
+                         template=email_html)
+                current_app.logger.info(f"Login notification sent to {user.email}")
+        except Exception as e:
+            # Don't fail login if notification fails
+            current_app.logger.error(f"Failed to send login notification to {user.email}: {e}", exc_info=True)
 
         # Return success, no tokens needed for session-based auth
         return success_response({"message": "Login successful"})
@@ -249,6 +293,28 @@ def login_verify_email():
     user.update_last_login()
 
     current_app.logger.info(f"User ID '{user_id}' successfully authenticated with email MFA.")
+
+    # Send login notification email
+    try:
+        template_path = get_config_value("EMAIL_LOGIN_NOTIFICATION_TEMPLATE")
+        if template_path:
+            # Get user IP address
+            user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            login_time = datetime.now(timezone.utc)
+            
+            email_html = render_template(template_path, 
+                                       user=user, 
+                                       login_time=login_time,
+                                       ip_address=user_ip,
+                                       mfa_method="Email")
+            
+            send_email(to=user.email, 
+                     subject="Security Alert: New Login Detected", 
+                     template=email_html)
+            current_app.logger.info(f"Login notification sent to {user.email}")
+    except Exception as e:
+        # Don't fail login if notification fails
+        current_app.logger.error(f"Failed to send login notification to {user.email}: {e}", exc_info=True)
 
     # Return success, no tokens needed for session-based auth
     return success_response({"message": "Login successful"})
