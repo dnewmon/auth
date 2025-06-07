@@ -4,6 +4,7 @@ Flask-Mail
 Flask-Migrate
 Flask-JWT-Extended
 Flask-Limiter
+Flask-WTF
 SQLAlchemy
 pyotp
 qrcode

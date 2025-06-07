@@ -17,8 +17,15 @@ class Credential(db.Model):
     notes = db.Column(db.Text, nullable=True)  # Also potentially encrypt this?
     category = db.Column(db.String(50), nullable=True, index=True)  # New category field
 
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), index=True)
+    
+    # Add composite indexes for common query patterns
+    __table_args__ = (
+        db.Index('idx_user_category', 'user_id', 'category'),
+        db.Index('idx_user_service', 'user_id', 'service_name'),
+        db.Index('idx_user_created', 'user_id', 'created_at'),
+    )
 
     def __repr__(self):
         return f"<Credential for {self.service_name} (User {self.user_id})>"

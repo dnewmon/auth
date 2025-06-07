@@ -81,16 +81,12 @@ def require_master_password():
 @login_required
 def create_credential():
     """Create a new credential for the logged-in user."""
-    if not require_master_password():
-        return error_response("Master password verification required.", 401)
-
     data = request.get_json()
-    if not data or not all(k in data for k in ("service_name", "username", "password")):
-        return error_response("Missing required fields: service_name, username, password", 400)
+    if not data or not all(k in data for k in ("service_name", "username", "password", "master_password")):
+        return error_response("Missing required fields: service_name, username, password, master_password", 400)
 
     try:
-        # Get master encryption key - the master password was already verified
-        # by the session verification, so we can use the master key directly
+        # Get master encryption key - always verify the master password for security
         master_key = current_user.get_master_key(data["master_password"])
         encrypted_pw = encrypt_data(master_key, data["password"])
     except ValueError as e:
@@ -132,15 +128,62 @@ def create_credential():
 @credentials_bp.route("/", methods=["GET"])
 @login_required
 def list_credentials():
-    """List all credentials for the logged-in user (names/ids only)."""
-    # Add optional category filter
+    """List credentials for the logged-in user with pagination and filtering."""
+    # Get pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 20, type=int), 100)  # Limit max per_page to 100
+    
+    # Get filter parameters
+    category = request.args.get('category')
+    search = request.args.get('search')
+    
+    # Build query with filters
     query = Credential.query.filter_by(user_id=current_user.id)
-
-    user_creds = query.order_by(Credential.category).order_by(Credential.service_name).all()
-
-    return success_response(
-        [{"id": cred.id, "service_name": cred.service_name, "username": cred.username, "service_url": cred.service_url, "category": cred.category} for cred in user_creds]
+    
+    if category:
+        query = query.filter(Credential.category == category)
+    
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                Credential.service_name.ilike(search_pattern),
+                Credential.username.ilike(search_pattern),
+                Credential.service_url.ilike(search_pattern)
+            )
+        )
+    
+    # Apply ordering and pagination
+    paginated = query.order_by(Credential.category.asc(), Credential.service_name.asc()).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False
     )
+    
+    # Format response with pagination metadata
+    return success_response({
+        "credentials": [
+            {
+                "id": cred.id,
+                "service_name": cred.service_name,
+                "username": cred.username,
+                "service_url": cred.service_url,
+                "category": cred.category,
+                "created_at": cred.created_at,
+                "updated_at": cred.updated_at
+            } for cred in paginated.items
+        ],
+        "pagination": {
+            "page": paginated.page,
+            "per_page": paginated.per_page,
+            "total": paginated.total,
+            "pages": paginated.pages,
+            "has_next": paginated.has_next,
+            "has_prev": paginated.has_prev,
+            "next_num": paginated.next_num,
+            "prev_num": paginated.prev_num
+        }
+    })
 
 
 @credentials_bp.route("/<int:credential_id>", methods=["POST"])
@@ -252,10 +295,19 @@ def update_credential(credential_id):
 @login_required
 def delete_credential(credential_id):
     """Delete a credential."""
-    # No master password needed for deletion, but might want to add it for extra security
+    data = request.get_json()
+    if not data or "master_password" not in data:
+        return error_response("Master password required for credential deletion.", 400)
+    
     credential = Credential.query.get_or_404(credential_id)
     if credential.user_id != current_user.id:
         return error_response("You do not have permission to access this credential.", 403)
+
+    # Verify master password before deletion for security
+    try:
+        current_user.get_master_key(data["master_password"])
+    except ValueError:
+        return error_response("Invalid master password.", 401)
 
     try:
         db.session.delete(credential)

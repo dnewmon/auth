@@ -18,6 +18,8 @@ from .email import send_email
 from ..models.credential import Credential
 from .encryption import derive_key, decrypt_data, encrypt_data
 from .. import limiter
+from .password_generator import PasswordGenerator, analyze_password_strength
+from ..models.audit_log import AuditLog
 from ..models.config import get_config_value
 
 
@@ -359,3 +361,314 @@ def import_credentials():
         db.session.rollback()
         current_app.logger.error(f"Error during credential import: {e}", exc_info=True)
         return error_response("Failed to import credentials.", 500)
+
+
+@utils_bp.route("/password-generator", methods=["POST"])
+@login_required
+@limiter.limit("50 per minute")
+def generate_password():
+    """Generate secure passwords with customizable options."""
+    data = request.get_json() or {}
+    
+    try:
+        generator = PasswordGenerator()
+        
+        # Configure generator based on request parameters
+        length = data.get('length', 16)
+        generator.set_length(length)
+        
+        # Character sets
+        char_sets = data.get('character_sets', {})
+        generator.set_character_sets(
+            lowercase=char_sets.get('lowercase', True),
+            uppercase=char_sets.get('uppercase', True),
+            digits=char_sets.get('digits', True),
+            symbols=char_sets.get('symbols', True)
+        )
+        
+        # Safety options
+        if data.get('safe_symbols_only', False):
+            generator.set_safe_symbols_only(True)
+        
+        if data.get('exclude_ambiguous', True):
+            generator.set_exclude_ambiguous(True)
+        
+        # Minimum requirements
+        min_reqs = data.get('minimum_requirements', {})
+        generator.set_minimum_requirements(
+            lowercase=min_reqs.get('lowercase', 1),
+            uppercase=min_reqs.get('uppercase', 1),
+            digits=min_reqs.get('digits', 1),
+            symbols=min_reqs.get('symbols', 1)
+        )
+        
+        # Exclude/require specific characters
+        if data.get('exclude_characters'):
+            generator.exclude_characters(data['exclude_characters'])
+        
+        if data.get('require_characters'):
+            generator.require_characters(data['require_characters'])
+        
+        # Generate password(s)
+        count = min(data.get('count', 1), 10)  # Limit to 10 passwords max
+        
+        if count == 1:
+            password = generator.generate()
+            strength = generator.analyze_strength(password)
+            
+            return success_response({
+                'password': password,
+                'strength': strength,
+                'length': len(password)
+            })
+        else:
+            passwords = generator.generate_multiple(count)
+            strengths = [generator.analyze_strength(pwd) for pwd in passwords]
+            
+            return success_response({
+                'passwords': [
+                    {
+                        'password': pwd,
+                        'strength': strength,
+                        'length': len(pwd)
+                    }
+                    for pwd, strength in zip(passwords, strengths)
+                ]
+            })
+    
+    except ValueError as e:
+        return error_response(f"Invalid password generation parameters: {str(e)}", 400)
+    except Exception as e:
+        current_app.logger.error(f"Password generation error: {str(e)}", exc_info=True)
+        return error_response("Password generation failed", 500)
+
+
+@utils_bp.route("/password-analyzer", methods=["POST"])
+@login_required
+@limiter.limit("100 per minute")
+def analyze_password():
+    """Analyze password strength and provide feedback."""
+    data = request.get_json()
+    if not data or 'password' not in data:
+        return error_response("Password is required for analysis", 400)
+    
+    password = data['password']
+    
+    try:
+        analysis = analyze_password_strength(password)
+        return success_response(analysis)
+    
+    except Exception as e:
+        current_app.logger.error(f"Password analysis error: {str(e)}", exc_info=True)
+        return error_response("Password analysis failed", 500)
+
+
+@utils_bp.route("/password-presets", methods=["GET"])
+@login_required
+def get_password_presets():
+    """Get predefined password generation presets."""
+    presets = {
+        'strong': {
+            'name': 'Strong Password',
+            'description': 'Balanced security and usability',
+            'length': 16,
+            'character_sets': {
+                'lowercase': True,
+                'uppercase': True,
+                'digits': True,
+                'symbols': True
+            },
+            'safe_symbols_only': False,
+            'exclude_ambiguous': True,
+            'minimum_requirements': {
+                'lowercase': 1,
+                'uppercase': 1,
+                'digits': 1,
+                'symbols': 1
+            }
+        },
+        'maximum_security': {
+            'name': 'Maximum Security',
+            'description': 'Highest security for critical accounts',
+            'length': 24,
+            'character_sets': {
+                'lowercase': True,
+                'uppercase': True,
+                'digits': True,
+                'symbols': True
+            },
+            'safe_symbols_only': False,
+            'exclude_ambiguous': True,
+            'minimum_requirements': {
+                'lowercase': 2,
+                'uppercase': 2,
+                'digits': 2,
+                'symbols': 2
+            }
+        },
+        'compatible': {
+            'name': 'System Compatible',
+            'description': 'Works with most systems and services',
+            'length': 16,
+            'character_sets': {
+                'lowercase': True,
+                'uppercase': True,
+                'digits': True,
+                'symbols': True
+            },
+            'safe_symbols_only': True,
+            'exclude_ambiguous': True,
+            'minimum_requirements': {
+                'lowercase': 1,
+                'uppercase': 1,
+                'digits': 1,
+                'symbols': 1
+            }
+        },
+        'memorable': {
+            'name': 'Memorable',
+            'description': 'Longer but easier to read and type',
+            'length': 20,
+            'character_sets': {
+                'lowercase': True,
+                'uppercase': True,
+                'digits': True,
+                'symbols': True
+            },
+            'safe_symbols_only': True,
+            'exclude_ambiguous': True,
+            'minimum_requirements': {
+                'lowercase': 2,
+                'uppercase': 2,
+                'digits': 2,
+                'symbols': 1
+            }
+        },
+        'pin': {
+            'name': 'Numeric PIN',
+            'description': 'Numbers only for PIN codes',
+            'length': 6,
+            'character_sets': {
+                'lowercase': False,
+                'uppercase': False,
+                'digits': True,
+                'symbols': False
+            },
+            'safe_symbols_only': False,
+            'exclude_ambiguous': False,
+            'minimum_requirements': {
+                'lowercase': 0,
+                'uppercase': 0,
+                'digits': 6,
+                'symbols': 0
+            }
+        }
+    }
+    
+    return success_response({'presets': presets})
+
+
+@utils_bp.route("/audit-logs", methods=["GET"])
+@login_required
+@limiter.limit("30 per minute")
+def get_audit_logs():
+    """Get audit logs for the current user."""
+    try:
+        # Get query parameters
+        limit = min(request.args.get('limit', 50, type=int), 100)
+        page = request.args.get('page', 1, type=int)
+        event_types = request.args.getlist('event_types')
+        
+        # Build query for user's audit logs
+        query = AuditLog.query.filter_by(user_id=current_user.id)
+        
+        if event_types:
+            query = query.filter(AuditLog.event_type.in_(event_types))
+        
+        # Apply pagination
+        paginated = query.order_by(AuditLog.created_at.desc()).paginate(
+            page=page,
+            per_page=limit,
+            error_out=False
+        )
+        
+        # Convert to dictionaries
+        logs = [log.to_dict() for log in paginated.items]
+        
+        return success_response({
+            'logs': logs,
+            'pagination': {
+                'page': paginated.page,
+                'per_page': paginated.per_page,
+                'total': paginated.total,
+                'pages': paginated.pages,
+                'has_next': paginated.has_next,
+                'has_prev': paginated.has_prev
+            }
+        })
+    
+    except Exception as e:
+        current_app.logger.error(f"Error retrieving audit logs: {e}", exc_info=True)
+        return error_response("Failed to retrieve audit logs", 500)
+
+
+@utils_bp.route("/security-summary", methods=["GET"])
+@login_required
+@limiter.limit("10 per minute")
+def get_security_summary():
+    """Get security summary and recent alerts for the current user."""
+    try:
+        # Get recent activity for this user
+        recent_logs = AuditLog.get_user_activity(current_user.id, limit=10)
+        
+        # Count different types of events in the last 30 days
+        from datetime import datetime, timezone, timedelta
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        
+        event_counts = {}
+        login_attempts = AuditLog.query.filter(
+            AuditLog.user_id == current_user.id,
+            AuditLog.event_type.in_([AuditLog.EVENT_LOGIN, AuditLog.EVENT_FAILED_LOGIN]),
+            AuditLog.created_at >= since
+        ).all()
+        
+        successful_logins = sum(1 for log in login_attempts if log.event_type == AuditLog.EVENT_LOGIN)
+        failed_logins = sum(1 for log in login_attempts if log.event_type == AuditLog.EVENT_FAILED_LOGIN)
+        
+        # Get credential access counts
+        credential_actions = AuditLog.query.filter(
+            AuditLog.user_id == current_user.id,
+            AuditLog.event_type.in_([
+                AuditLog.EVENT_CREDENTIAL_CREATED,
+                AuditLog.EVENT_CREDENTIAL_VIEWED,
+                AuditLog.EVENT_CREDENTIAL_UPDATED,
+                AuditLog.EVENT_CREDENTIAL_DELETED
+            ]),
+            AuditLog.created_at >= since
+        ).count()
+        
+        # Check for any security warnings
+        security_warnings = AuditLog.query.filter(
+            AuditLog.user_id == current_user.id,
+            AuditLog.severity.in_([AuditLog.SEVERITY_WARNING, AuditLog.SEVERITY_ERROR, AuditLog.SEVERITY_CRITICAL]),
+            AuditLog.created_at >= since
+        ).count()
+        
+        return success_response({
+            'recent_activity': [log.to_dict() for log in recent_logs],
+            'statistics': {
+                'successful_logins': successful_logins,
+                'failed_logins': failed_logins,
+                'credential_actions': credential_actions,
+                'security_warnings': security_warnings
+            },
+            'summary': {
+                'account_secure': security_warnings == 0,
+                'recent_activity_count': len(recent_logs),
+                'period_days': 30
+            }
+        })
+    
+    except Exception as e:
+        current_app.logger.error(f"Error generating security summary: {e}", exc_info=True)
+        return error_response("Failed to generate security summary", 500)

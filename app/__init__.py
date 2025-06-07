@@ -9,6 +9,8 @@ from flask_mail import Mail
 from flask_login import LoginManager, user_loaded_from_request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
+from .middleware.audit_logger import AuditMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,12 @@ login_manager.session_protection = "strong"
 
 # Initialize Flask-Mail
 mail = Mail()
+
+# Initialize CSRF Protection
+csrf = CSRFProtect()
+
+# Initialize Audit Middleware
+audit_middleware = AuditMiddleware()
 
 # Initialize Flask-Limiter
 limiter = Limiter(
@@ -54,6 +62,13 @@ def create_app(config_name: str = "development") -> Flask:
     mail.init_app(app)
     mail.app = app
     mail.state = app.extensions["mail"]
+    
+    # Initialize CSRF protection (disable for API in testing)
+    if not config_obj.TESTING:
+        csrf.init_app(app)
+    
+    # Initialize audit middleware
+    audit_middleware.init_app(app)
 
     # Always initialize limiter, but disable it for testing
     limiter.init_app(app)

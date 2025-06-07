@@ -1,13 +1,10 @@
-from werkzeug.security import generate_password_hash, check_password_hash
 import datetime
 from datetime import timezone
-import os
 from flask_login import UserMixin
 from .database import db
 from .config import get_config_value, DEFAULT_CONFIG
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-import json
 
 # Initialize the Argon2 password hasher with secure defaults
 _password_hasher = PasswordHasher(

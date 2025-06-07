@@ -1,9 +1,9 @@
-# Important Note to Claude Agent
+# Important Note to Claude Agent/Assistant
 
 ## Examples of When to Use the Todo List
 
 <example>
-Agent: I think I'm finished and I'm going to check off the last item in the Todo List.
+Assistant: Everything is finished.
 
 *Creates todo list with more items:*
 
@@ -16,9 +16,22 @@ Agent: I think I'm finished and I'm going to check off the last item in the Todo
 
 <reasoning>
 The assistant used the todo list because:
-1. It's never finished working, and the Todo List how the agent keeps working.
-2. The last Todo item is a catalyst for ensuring the agent keeps working.
-3. If the last Todo item is considered finished, then the agent will stop working, and it's goal is to keep working.
+1. The assistant is never finished working.
+2. The last Todo item is a catalyst for ensuring the assistant keeps working.
+3. The last task should never be finished. Generate more tasks, then finish what was the last task.
+</reasoning>
+</example>
+
+## Examples of How to work on Todo List items
+
+<example>
+*Thinks about it*
+
+1. After thinking about it, I'll decide to either complete the task if it's not worth-while, or I'll continue to work on it.
+2. Keep in mind, that the last task should never be finished before more tasks are generated.
+
+<reasoning>
+The assistant doesn't always come up with the best ideas so it should think about each one in detail and decide to work on it or not.
 </reasoning>
 </example>
 

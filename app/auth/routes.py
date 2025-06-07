@@ -1,3 +1,4 @@
+import os
 from flask import request, jsonify, current_app, session, render_template, url_for
 from . import auth_bp
 from ..models import db, User, EmailVerificationToken, MfaVerificationCode
@@ -47,8 +48,6 @@ def register():
         new_user = User(username=username, email=email)
         new_user.set_password(password)  # Uses Argon2 now
         # Generate encryption salt during registration
-        import os
-
         new_user.encryption_salt = os.urandom(16)
 
         db.session.add(new_user)
