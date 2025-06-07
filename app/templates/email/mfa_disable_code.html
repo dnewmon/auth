@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>MFA Disable Verification Code</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                line-height: 1.6;
+                color: #333;
+            }
+            .container {
+                max-width: 600px;
+                margin: 20px auto;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }
+            .header {
+                font-size: 1.2em;
+                font-weight: bold;
+                margin-bottom: 15px;
+                color: #dc3545;
+            }
+            .verification-code {
+                font-size: 2em;
+                font-weight: bold;
+                color: #dc3545;
+                background-color: #f8f9fa;
+                padding: 15px;
+                text-align: center;
+                border-radius: 5px;
+                margin: 20px 0;
+                letter-spacing: 3px;
+            }
+            .footer {
+                margin-top: 20px;
+                font-size: 0.9em;
+                color: #777;
+                border-top: 1px solid #eee;
+                padding-top: 15px;
+            }
+            .expiry-notice {
+                font-size: 0.9em;
+                color: #d9534f;
+                margin-top: 10px;
+            }
+            .security-notice {
+                background-color: #f8d7da;
+                border: 1px solid #f5c6cb;
+                border-radius: 5px;
+                padding: 10px;
+                margin: 15px 0;
+                font-size: 0.9em;
+                color: #721c24;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">Disable Multi-Factor Authentication</div>
+            <p>Hello {{ user.username }},</p>
+            <p>You have requested to disable multi-factor authentication for your account. To complete this security change, please use the verification code below:</p>
+            
+            <div class="verification-code">{{ verification_code }}</div>
+            
+            <div class="expiry-notice">
+                <strong>Important:</strong> This code will expire in 15 minutes for security reasons.
+            </div>
+            
+            <div class="security-notice">
+                <strong>Security Warning:</strong> Disabling multi-factor authentication will reduce the security of your account. If you did not request this change, please ignore this email and consider reviewing your account security.
+            </div>
+            
+            <p>Enter this code in your account settings to disable multi-factor authentication.</p>
+            
+            <p>Thank you,</p>
+            <p>The Password Manager Team</p>
+            
+            <div class="footer">
+                This is an automated message. Please do not reply to this email.
+                <br>If you need help, please contact our support team.
+            </div>
+        </div>
+    </body>
+</html>

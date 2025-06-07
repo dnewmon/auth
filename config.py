@@ -29,6 +29,7 @@ class Config:
     MAIL_SERVER = os.environ.get("MAIL_SERVER")
     MAIL_PORT = int(os.environ.get("MAIL_PORT", 587))
     MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "true").lower() in ["true", "1", "t"]
+    MAIL_USE_SSL = os.environ.get("MAIL_USE_SSL", "false").lower() in ["true", "1", "t"]
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER = os.environ.get(
@@ -45,6 +46,7 @@ class Config:
     SESSION_KEY_OTP_SECRET_TEMP = os.environ.get(
         "SESSION_KEY_OTP_SECRET_TEMP", "otp_secret_temp"
     )
+    SESSION_KEY_EMAIL_MFA_USER_ID = os.environ.get("SESSION_KEY_EMAIL_MFA_USER_ID", "email_mfa_user_id")
 
     # Template Paths
     EMAIL_LOGIN_NOTIFICATION_TEMPLATE = os.environ.get(
@@ -52,6 +54,9 @@ class Config:
     )
     EMAIL_RESET_PASSWORD_TEMPLATE = os.environ.get(
         "EMAIL_RESET_PASSWORD_TEMPLATE", "email/reset_password.html"
+    )
+    EMAIL_MFA_TEST_TEMPLATE = os.environ.get(
+        "EMAIL_MFA_TEST_TEMPLATE", "email/mfa_test.html"
     )
 
     # File Names

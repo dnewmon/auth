@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Email MFA Enabled</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                line-height: 1.6;
+                color: #333;
+            }
+            .container {
+                max-width: 600px;
+                margin: 20px auto;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }
+            .header {
+                font-size: 1.2em;
+                font-weight: bold;
+                margin-bottom: 15px;
+                color: #5cb85c; /* Success color */
+            }
+            .footer {
+                margin-top: 20px;
+                font-size: 0.9em;
+                color: #777;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">Email Multi-Factor Authentication Enabled</div>
+            <p>Hello {{ user.username }},</p>
+            <p>Email multi-factor authentication (MFA) has been successfully enabled for your account.</p>
+            <p>
+                From now on, when you log in from a new device or location, you'll receive an email with a verification code that you'll need to enter to complete the login process.
+            </p>
+            <p>
+                This additional security layer helps protect your account from unauthorized access. If you ever want to disable email MFA, you can do so from your account security settings.
+            </p>
+            <p>
+                If you did not enable this feature, please contact us immediately and change your password.
+            </p>
+            <p>Thank you,</p>
+            <p>The Password Manager Team</p>
+            <div class="footer">This is an automated message. Please do not reply.</div>
+        </div>
+    </body>
+</html>

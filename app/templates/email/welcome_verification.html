@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Welcome - Please Verify Your Email</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                line-height: 1.6;
+                color: #333;
+            }
+            .container {
+                max-width: 600px;
+                margin: 20px auto;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }
+            .header {
+                font-size: 1.2em;
+                font-weight: bold;
+                margin-bottom: 15px;
+                color: #5cb85c; /* Success color */
+            }
+            .verification-button {
+                display: inline-block;
+                padding: 12px 24px;
+                background-color: #007bff;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                margin: 15px 0;
+                font-weight: bold;
+            }
+            .verification-button:hover {
+                background-color: #0056b3;
+                color: white;
+            }
+            .footer {
+                margin-top: 20px;
+                font-size: 0.9em;
+                color: #777;
+                border-top: 1px solid #eee;
+                padding-top: 15px;
+            }
+            .expiry-notice {
+                font-size: 0.9em;
+                color: #d9534f;
+                margin-top: 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">Welcome to Password Manager!</div>
+            <p>Hello {{ user.username }},</p>
+            <p>Thank you for registering with our Password Manager. To complete your registration and enable all features, please verify your email address.</p>
+            
+            <p>Click the button below to verify your email:</p>
+            <a href="{{ verification_url }}" class="verification-button">Verify Email Address</a>
+            
+            <p>If the button doesn't work, you can also copy and paste this link into your browser:</p>
+            <p><code>{{ verification_url }}</code></p>
+            
+            <div class="expiry-notice">
+                <strong>Important:</strong> This verification link will expire in 15 minutes for security reasons.
+            </div>
+            
+            <p>Once verified, you'll be able to:</p>
+            <ul>
+                <li>Enable email-based multi-factor authentication</li>
+                <li>Receive important security notifications</li>
+                <li>Access all account recovery features</li>
+            </ul>
+            
+            <p>If you didn't create this account, please ignore this email.</p>
+            
+            <p>Welcome aboard!</p>
+            <p>The Password Manager Team</p>
+            
+            <div class="footer">
+                This is an automated message. Please do not reply to this email.
+                <br>If you need help, please contact our support team.
+            </div>
+        </div>
+    </body>
+</html>

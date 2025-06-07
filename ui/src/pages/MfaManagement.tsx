@@ -119,14 +119,23 @@ export default function MfaManagement() {
 
             <Card className="mb-5">
                 <Card.Body>
-                    <Card.Title>Email Notifications</Card.Title>
-                    <Card.Text>Receive email notifications when someone logs into your account.</Card.Text>
+                    <Card.Title>Email Multi-Factor Authentication</Card.Title>
+                    <Card.Text>Receive verification codes via email for login and account changes.</Card.Text>
+                    {!mfaStatus?.email_verified && (
+                        <Alert variant="warning" className="mb-3">
+                            <small>Email verification required before enabling email MFA.</small>
+                        </Alert>
+                    )}
                     {mfaStatus?.email_mfa_enabled ? (
                         <Button variant="danger" onClick={() => setShowEmailSetup(true)}>
                             Disable Email MFA
                         </Button>
                     ) : (
-                        <Button variant="primary" onClick={() => setShowEmailSetup(true)}>
+                        <Button 
+                            variant="primary" 
+                            onClick={() => setShowEmailSetup(true)}
+                            disabled={!mfaStatus?.email_verified}
+                        >
                             Enable Email MFA
                         </Button>
                     )}
@@ -179,7 +188,13 @@ export default function MfaManagement() {
 
             {/* Existing Modals */}
             <OtpSetup otp_enabled={mfaStatus?.otp_enabled || false} show={showOtpSetup} onClose={() => setShowOtpSetup(false)} onSuccess={handleOtpSuccess} />
-            <EmailSetup email_mfa_enabled={mfaStatus?.email_mfa_enabled || false} show={showEmailSetup} onClose={() => setShowEmailSetup(false)} onSuccess={loadMfaStatus} />
+            <EmailSetup 
+                email_mfa_enabled={mfaStatus?.email_mfa_enabled || false} 
+                email_verified={mfaStatus?.email_verified || false}
+                show={showEmailSetup} 
+                onClose={() => setShowEmailSetup(false)} 
+                onSuccess={loadMfaStatus} 
+            />
 
             {/* Regenerate Recovery Keys Modal */}
             <Modal show={showRegenerateKeysModal} onHide={() => setShowRegenerateKeysModal(false)}>

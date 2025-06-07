@@ -42,6 +42,7 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    email_verified = db.Column(db.Boolean, default=False, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     # Salt for deriving the user-specific credential encryption key
     # Generated once during user registration

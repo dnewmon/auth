@@ -10,7 +10,7 @@ import base64
 from flask import request, jsonify, current_app, Response, session, render_template
 from flask_login import login_required, current_user
 from . import security_bp
-from ..models import db, User
+from ..models import db, User, MfaVerificationCode
 from ..utils.responses import success_response, error_response
 from ..utils.email import send_email
 from .. import limiter
@@ -46,7 +46,10 @@ def otp_setup():
     # Create provisioning URI (otpauth://)
     # Replace 'YourAppName' and user.email/username as appropriate
     provisioning_uri = pyotp.totp.TOTP(otp_secret).provisioning_uri(
-        name=user.email, issuer_name=get_config_value("OTP_ISSUER_NAME", "PasswordManagerApp")  # Or user.username
+        name=user.email,
+        issuer_name=get_config_value(
+            "OTP_ISSUER_NAME", "PasswordManagerApp"
+        ),  # Or user.username
     )
 
     # Generate QR code
@@ -80,7 +83,10 @@ def otp_verify_enable():
     # Retrieve the temporary secret from the session
     otp_secret_temp = session.get(get_config_value("SESSION_KEY_OTP_SECRET_TEMP"))
     if not otp_secret_temp:
-        return error_response("OTP setup process not initiated or session expired. Please start setup again.", 400)
+        return error_response(
+            "OTP setup process not initiated or session expired. Please start setup again.",
+            400,
+        )
 
     # Verify the token against the temporary secret
     totp = pyotp.TOTP(otp_secret_temp)
@@ -93,6 +99,15 @@ def otp_verify_enable():
         # Clear the temporary secret from the session
         session.pop(get_config_value("SESSION_KEY_OTP_SECRET_TEMP"), None)
         session.modified = True
+
+        # Send confirmation email that OTP has been enabled
+        try:
+            email_html = render_template('email/otp_enabled.html', user=user)
+            send_email(user.email, "OTP Authentication Enabled", email_html)
+            current_app.logger.info(f"Sent OTP enabled notification to {user.email}")
+        except Exception as e:
+            current_app.logger.error(f"Failed to send OTP enabled notification: {e}", exc_info=True)
+            # Don't fail the operation if email fails
 
         current_app.logger.info(f"OTP enabled successfully for user {user.id}")
         return success_response({"message": "OTP has been successfully enabled."})
@@ -123,16 +138,25 @@ def otp_disable():
     user.otp_enabled = False
     db.session.commit()
 
+    # Send confirmation email that OTP has been disabled
+    try:
+        email_html = render_template('email/otp_disabled.html', user=user)
+        send_email(user.email, "OTP Authentication Disabled", email_html)
+        current_app.logger.info(f"Sent OTP disabled notification to {user.email}")
+    except Exception as e:
+        current_app.logger.error(f"Failed to send OTP disabled notification: {e}", exc_info=True)
+        # Don't fail the operation if email fails
+
     current_app.logger.info(f"OTP disabled for user {user.id}")
     return success_response({"message": "OTP has been successfully disabled."})
 
 
-# Placeholder for Email MFA routes
+# Email MFA routes
 @security_bp.route("/mfa/email/enable", methods=["POST"])
 @login_required
 @limiter.limit("5 per hour")
 def enable_email_mfa():
-    """Enables email notifications for login for the current user."""
+    """Enables email MFA for the current user."""
     user = current_user
     data = request.get_json()
 
@@ -144,28 +168,32 @@ def enable_email_mfa():
         return error_response("Invalid password.", 401)
 
     if user.email_mfa_enabled:
-        return error_response("Email MFA notification is already enabled.", 400)
+        return error_response("Email MFA is already enabled.", 400)
 
-    # Send a test email to verify the email is working
+    # Check if email is verified
+    if not user.email_verified:
+        return error_response("Email address must be verified before enabling email MFA. Please check your email for a verification link or request a new one.", 400)
+
+    # Send confirmation email that MFA has been enabled
     try:
-        template_path = get_config_value("EMAIL_MFA_TEST_TEMPLATE")
-        email_html = render_template(template_path, user=user)
-        send_email(user.email, "Email MFA Test", email_html)
+        email_html = render_template('email/mfa_enabled.html', user=user)
+        send_email(user.email, "Email MFA Enabled", email_html)
+        current_app.logger.info(f"Sent MFA enabled notification to {user.email}")
     except Exception as e:
-        current_app.logger.error(f"Failed to send test email for MFA setup: {e}", exc_info=True)
-        return error_response("Failed to send test email. Please verify your email settings.", 500)
+        current_app.logger.error(f"Failed to send MFA enabled notification: {e}", exc_info=True)
+        # Don't fail the operation if email fails
 
     user.email_mfa_enabled = True
     db.session.commit()
-    current_app.logger.info(f"Email MFA notification enabled for user {user.id}")
-    return success_response({"message": "Email MFA notification has been enabled."})
+    current_app.logger.info(f"Email MFA enabled for user {user.id}")
+    return success_response({"message": "Email MFA has been enabled successfully."})
 
 
 @security_bp.route("/mfa/email/disable", methods=["POST"])
 @login_required
 @limiter.limit("5 per hour")
 def disable_email_mfa():
-    """Disables email notifications for login for the current user."""
+    """Initiates the process to disable email MFA by sending a verification code."""
     user = current_user
     data = request.get_json()
 
@@ -177,12 +205,52 @@ def disable_email_mfa():
         return error_response("Invalid password.", 401)
 
     if not user.email_mfa_enabled:
-        return error_response("Email MFA notification is not currently enabled.", 400)
+        return error_response("Email MFA is not currently enabled.", 400)
 
+    try:
+        # Generate verification code
+        verification_code = MfaVerificationCode.create_for_user(user.id, 'disable_mfa')
+        
+        # Send verification code email
+        email_html = render_template('email/mfa_disable_code.html', 
+                                     user=user, 
+                                     verification_code=verification_code.code)
+        send_email(user.email, "Verify MFA Disable Request", email_html)
+        
+        current_app.logger.info(f"Sent MFA disable verification code to {user.email}")
+        return success_response({"message": "Verification code sent to your email. Please check your inbox and enter the code to disable MFA."})
+        
+    except Exception as e:
+        current_app.logger.error(f"Failed to send MFA disable verification code: {e}", exc_info=True)
+        return error_response("Failed to send verification code. Please try again later.", 500)
+
+
+@security_bp.route("/mfa/email/disable/verify", methods=["POST"])
+@login_required
+@limiter.limit("10 per minute")
+def verify_disable_email_mfa():
+    """Verifies the code and disables email MFA."""
+    user = current_user
+    data = request.get_json()
+
+    if not data or not data.get("verification_code"):
+        return error_response("Verification code is required.", 400)
+
+    verification_code = data.get("verification_code")
+    
+    # Find and validate the verification code
+    code_entry = MfaVerificationCode.find_valid_code(user.id, verification_code, 'disable_mfa')
+    if not code_entry:
+        current_app.logger.warning(f"Invalid MFA disable verification code for user {user.id}")
+        return error_response("Invalid or expired verification code.", 400)
+
+    # Disable email MFA
     user.email_mfa_enabled = False
+    code_entry.mark_as_used()
     db.session.commit()
-    current_app.logger.info(f"Email MFA notification disabled for user {user.id}")
-    return success_response({"message": "Email MFA notification has been disabled."})
+    
+    current_app.logger.info(f"Email MFA disabled for user {user.id}")
+    return success_response({"message": "Email MFA has been disabled successfully."})
 
 
 @security_bp.route("/mfa/status", methods=["GET"])
@@ -190,4 +258,8 @@ def disable_email_mfa():
 def get_mfa_status():
     """Get the MFA configuration status for the current user."""
     user = current_user
-    return success_response({"otp_enabled": user.otp_enabled, "email_mfa_enabled": user.email_mfa_enabled})
+    return success_response({
+        "otp_enabled": user.otp_enabled, 
+        "email_mfa_enabled": user.email_mfa_enabled,
+        "email_verified": user.email_verified
+    })

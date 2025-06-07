@@ -19,6 +19,8 @@ export default function LoginPage() {
     });
     const [otpToken, setOtpToken] = useState('');
     const [showOtpForm, setShowOtpForm] = useState(false);
+    const [emailMfaCode, setEmailMfaCode] = useState('');
+    const [showEmailMfaForm, setShowEmailMfaForm] = useState(false);
 
     const [handleLogin, , loginState, loginError] = useApi(async () => {
         const response = await AuthService.login(formData);
@@ -30,6 +32,9 @@ export default function LoginPage() {
             if (response.mfa_required === 'otp') {
                 go_home = false;
                 setShowOtpForm(true);
+            } else if (response.mfa_required === 'email') {
+                go_home = false;
+                setShowEmailMfaForm(true);
             }
         }
 
@@ -46,6 +51,13 @@ export default function LoginPage() {
         return response;
     });
 
+    const [handleEmailMfaVerify, , emailMfaState, emailMfaError] = useApi(async () => {
+        const response = await AuthService.verifyEmailMfa({ verification_code: emailMfaCode });
+        setUsername(formData.username);
+        navigate('/');
+        return response;
+    });
+
     return (
         <Container className="mt-5">
             <Row className="justify-content-center">
@@ -53,8 +65,8 @@ export default function LoginPage() {
                     <Card>
                         <Card.Body>
                             <h2 className="text-center mb-4">Login</h2>
-                            <ApiSuspense api_states={[loginState, otpState]} suspense={<Spinner />}>
-                                {!showOtpForm ? (
+                            <ApiSuspense api_states={[loginState, otpState, emailMfaState]} suspense={<Spinner />}>
+                                {!showOtpForm && !showEmailMfaForm ? (
                                     <Form
                                         onSubmit={(e) => {
                                             e.preventDefault();
@@ -84,7 +96,7 @@ export default function LoginPage() {
                                             </div>
                                         </div>
                                     </Form>
-                                ) : (
+                                ) : showOtpForm ? (
                                     <div>
                                         <h3 className="text-center mb-4">Enter OTP Code</h3>
                                         <Form
@@ -119,10 +131,49 @@ export default function LoginPage() {
                                             </Button>
                                         </Form>
                                     </div>
+                                ) : (
+                                    <div>
+                                        <h3 className="text-center mb-4">Enter Email Verification Code</h3>
+                                        <p className="text-center text-muted mb-4">
+                                            We've sent a 6-digit verification code to your email address. Please check your inbox.
+                                        </p>
+                                        <Form
+                                            onSubmit={(e) => {
+                                                e.preventDefault();
+                                                handleEmailMfaVerify();
+                                            }}
+                                        >
+                                            <Form.Group className="mb-3">
+                                                <Form.Label>Enter the 6-digit code from your email</Form.Label>
+                                                <Form.Control
+                                                    type="text"
+                                                    value={emailMfaCode}
+                                                    onChange={(e) => setEmailMfaCode(e.target.value)}
+                                                    pattern="[0-9]{6}"
+                                                    maxLength={6}
+                                                    required
+                                                />
+                                            </Form.Group>
+                                            <Button variant="primary" type="submit" className="w-100">
+                                                Verify
+                                            </Button>
+                                            <Button
+                                                variant="link"
+                                                className="w-100 mt-2"
+                                                onClick={() => {
+                                                    setShowEmailMfaForm(false);
+                                                    setEmailMfaCode('');
+                                                }}
+                                            >
+                                                Back to Login
+                                            </Button>
+                                        </Form>
+                                    </div>
                                 )}
                             </ApiSuspense>
                             <ApiErrorFallback api_error={loginError} />
                             <ApiErrorFallback api_error={otpError} />
+                            <ApiErrorFallback api_error={emailMfaError} />
                         </Card.Body>
                     </Card>
                 </Col>

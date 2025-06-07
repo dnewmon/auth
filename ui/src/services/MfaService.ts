@@ -18,10 +18,15 @@ export interface EmailMfaRequest {
     password: string;
 }
 
+export interface VerifyEmailMfaDisableRequest {
+    verification_code: string;
+}
+
 // Response data interfaces
 export interface MfaStatusData {
     otp_enabled: boolean;
     email_mfa_enabled: boolean;
+    email_verified: boolean;
 }
 
 export interface SetupOtpData {
@@ -69,6 +74,11 @@ export class MfaService {
 
     static async disableEmailMfa(password: string): Promise<MessageData> {
         const response = await axios.post<MessageResponse>(`${this.BASE_URL}/mfa/email/disable`, { password });
+        return response.data.data;
+    }
+
+    static async verifyDisableEmailMfa(verification_code: string): Promise<MessageData> {
+        const response = await axios.post<MessageResponse>(`${this.BASE_URL}/mfa/email/disable/verify`, { verification_code });
         return response.data.data;
     }
 }

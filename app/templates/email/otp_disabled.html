@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>OTP Authentication Disabled</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                line-height: 1.6;
+                color: #333;
+            }
+            .container {
+                max-width: 600px;
+                margin: 20px auto;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }
+            .header {
+                font-size: 1.2em;
+                font-weight: bold;
+                margin-bottom: 15px;
+                color: #dc3545; /* Warning color */
+            }
+            .footer {
+                margin-top: 20px;
+                font-size: 0.9em;
+                color: #777;
+            }
+            .security-notice {
+                background-color: #f8d7da;
+                border: 1px solid #f5c6cb;
+                border-radius: 5px;
+                padding: 10px;
+                margin: 15px 0;
+                font-size: 0.9em;
+                color: #721c24;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">OTP Multi-Factor Authentication Disabled</div>
+            <p>Hello {{ user.username }},</p>
+            <p>One-Time Password (OTP) multi-factor authentication has been disabled for your account.</p>
+            
+            <div class="security-notice">
+                <strong>Security Warning:</strong> Your account security has been reduced. We strongly recommend re-enabling multi-factor authentication or enabling email MFA to protect your account.
+            </div>
+            
+            <p>
+                Your account now only requires your password for login. While this may be more convenient, it also makes your account more vulnerable to unauthorized access.
+            </p>
+            <p>
+                <strong>We recommend:</strong>
+            </p>
+            <ul>
+                <li>Re-enabling OTP authentication for maximum security</li>
+                <li>Enabling email MFA as an alternative security measure</li>
+                <li>Using a strong, unique password</li>
+                <li>Regularly monitoring your account for suspicious activity</li>
+            </ul>
+            <p>
+                If you did not disable this feature, please contact us immediately, change your password, and re-enable multi-factor authentication.
+            </p>
+            <p>You can re-enable OTP authentication at any time from your account security settings.</p>
+            <p>Thank you,</p>
+            <p>The Password Manager Team</p>
+            <div class="footer">This is an automated message. Please do not reply.</div>
+        </div>
+    </body>
+</html>

@@ -100,8 +100,22 @@ export default function RegisterPage() {
                                     <>
                                         <Alert variant="success">
                                             <Alert.Heading>Account Created Successfully!</Alert.Heading>
-                                            <p>Your account has been created, but there's one more important step: You need to save your recovery keys.</p>
+                                            <p>Your account has been created, but there are two more important steps:</p>
+                                            <ol>
+                                                <li>Save your recovery keys (shown below)</li>
+                                                <li>Verify your email address to enable all features</li>
+                                            </ol>
                                         </Alert>
+
+                                        {userData?.verification_message && (
+                                            <Alert variant="info">
+                                                <Alert.Heading>Email Verification Required</Alert.Heading>
+                                                <p>{userData.verification_message}</p>
+                                                <p className="mb-0">
+                                                    <small>You'll need to verify your email before you can enable email-based multi-factor authentication.</small>
+                                                </p>
+                                            </Alert>
+                                        )}
 
                                         <Alert variant="warning">
                                             <Alert.Heading>Important: Save Your Recovery Keys</Alert.Heading>

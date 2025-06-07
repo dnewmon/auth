@@ -52,6 +52,8 @@ def create_app(config_name: str = "development") -> Flask:
     migrate.init_app(app, db)
     login_manager.init_app(app)
     mail.init_app(app)
+    mail.app = app
+    mail.state = app.extensions["mail"]
 
     # Always initialize limiter, but disable it for testing
     limiter.init_app(app)
