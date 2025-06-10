@@ -338,9 +338,9 @@ class TestListCredentials:
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 assert data['status'] == "success"
-                assert len(data['data']) == 1
+                assert len(data['data']['credentials']) == 1
                 
-                credential = data['data'][0]
+                credential = data['data']['credentials'][0]
                 assert credential['id'] == test_credential.id
                 assert credential['service_name'] == 'Test Service'
                 assert credential['username'] == 'testusername'
@@ -356,7 +356,7 @@ class TestListCredentials:
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 assert data['status'] == "success"
-                assert len(data['data']) == 0
+                assert len(data['data']['credentials']) == 0
 
     def test_list_credentials_unauthenticated(self, client, test_user):
         """Test listing credentials without authentication."""
@@ -405,8 +405,8 @@ class TestListCredentials:
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 assert data['status'] == "success"
-                assert len(data['data']) == 1
-                assert data['data'][0]['service_name'] == 'Test Service'
+                assert len(data['data']['credentials']) == 1
+                assert data['data']['credentials'][0]['service_name'] == 'Test Service'
 
 
 class TestGetCredential:
@@ -544,7 +544,7 @@ class TestUpdateCredential:
                 update_data = {
                     'service_name': 'Updated Service',
                     'username': 'updateduser',
-                    'password': 'updatedpassword',
+                    'password': 'UpdatedPassword!2024',
                     'notes': 'Updated notes',
                     'category': 'personal',
                     'master_password': 'testpassword'
@@ -678,7 +678,11 @@ class TestDeleteCredential:
         """Test successful credential deletion."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
-                response = client.delete(f'/api/credentials/{test_credential.id}')
+                response = client.delete(
+                    f'/api/credentials/{test_credential.id}',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
                 
                 assert response.status_code == 200
                 data = json.loads(response.data)
@@ -693,7 +697,11 @@ class TestDeleteCredential:
         """Test deletion of non-existent credential."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
-                response = client.delete('/api/credentials/99999')
+                response = client.delete(
+                    '/api/credentials/99999',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
                 
                 assert response.status_code == 404
 
@@ -731,7 +739,11 @@ class TestDeleteCredential:
         # Test that test_user cannot delete other user's credential
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
-                response = client.delete(f'/api/credentials/{other_credential.id}')
+                response = client.delete(
+                    f'/api/credentials/{other_credential.id}',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
                 
                 assert response.status_code == 403
                 data = json.loads(response.data)
@@ -741,7 +753,11 @@ class TestDeleteCredential:
     def test_delete_credential_unauthenticated(self, client, test_user, test_credential):
         """Test credential deletion without authentication."""
         # Don't mock anything - test actual unauthenticated request
-        response = client.delete(f'/api/credentials/{test_credential.id}')
+        response = client.delete(
+            f'/api/credentials/{test_credential.id}',
+            json={'master_password': 'testpassword'},
+            content_type='application/json'
+        )
         
         # Flask-Login redirects unauthenticated users
         assert response.status_code == 302
@@ -808,7 +824,7 @@ class TestIntegration:
                 credential_data = {
                     'service_name': 'Integration Test Service',
                     'username': 'testuser',
-                    'password': 'testpassword123',
+                    'password': 'TestPassword!2024',
                     'master_password': 'testpassword'
                 }
                 
@@ -834,7 +850,7 @@ class TestIntegration:
                 )
                 assert response.status_code == 200
                 credential = json.loads(response.data)['data']
-                assert credential['password'] == 'testpassword123'
+                assert credential['password'] == 'TestPassword!2024'
                 
                 # 5. Update credential
                 update_data = {
@@ -849,5 +865,9 @@ class TestIntegration:
                 assert response.status_code == 200
                 
                 # 6. Delete credential
-                response = client.delete(f'/api/credentials/{credential_id}')
+                response = client.delete(
+                    f'/api/credentials/{credential_id}',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
                 assert response.status_code == 200

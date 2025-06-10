@@ -9,7 +9,7 @@ from app import create_app, db
 from config import TestingConfig
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def app():
     """Create a Flask application configured for testing."""
     # Set required environment variables for testing (force override)

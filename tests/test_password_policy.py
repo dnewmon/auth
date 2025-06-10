@@ -228,7 +228,7 @@ class TestPasswordPolicyIntegration:
                                  json={
                                      'service_name': 'Test Service',
                                      'username': 'testuser',
-                                     'password': 'StrongPassword123!',
+                                     'password': 'StrongPassword!2024',
                                      'master_password': 'password123'
                                  },
                                  content_type='application/json')
@@ -329,7 +329,7 @@ class TestPasswordPolicyUtilityFunctions:
     
     def test_validate_credential_password_function(self):
         """Test the convenience function for credential password validation."""
-        password = "StrongPassword123!"
+        password = "StrongPassword!2024"
         user_info = {"username": "testuser", "email": "test@example.com"}
         
         is_valid, errors, warnings = validate_credential_password(password, user_info, "create")
