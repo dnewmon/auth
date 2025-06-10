@@ -49,6 +49,10 @@ def app_context(app):
     """Create an application context for tests that need it."""
     with app.app_context():
         yield app
+        # Clean up database between tests
+        db.session.remove()
+        db.drop_all()
+        db.create_all()
 
 
 @pytest.fixture(scope='function')

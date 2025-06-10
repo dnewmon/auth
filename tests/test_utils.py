@@ -26,16 +26,17 @@ class TestForgotPassword:
              patch('app.utils.routes.get_config_value') as mock_get_config, \
              patch('app.utils.routes.db.session') as mock_db_session, \
              patch('app.utils.routes.PasswordResetToken') as mock_token_model, \
-             patch('app.utils.routes.User') as mock_user_model:
+             patch('app.utils.routes.User') as mock_user_model, \
+             patch('app.models.user.RecoveryKey') as mock_recovery_key_model:
             
             # Setup mocks
             mock_user = Mock()
             mock_user.id = 1
             mock_user.email = "user@example.com"
-            mock_user.recovery_keys = [Mock(), Mock()]  # Has 2 recovery keys
-            mock_user.recovery_keys[0].used_at = None  # Unused
-            mock_user.recovery_keys[1].used_at = "2023-01-01"  # Used
             mock_user_model.query.filter_by.return_value.first.return_value = mock_user
+            
+            # Mock RecoveryKey queries to return actual integers
+            mock_recovery_key_model.query.filter_by.return_value.count.side_effect = [2, 1]  # Total keys, then unused
             
             mock_token = Mock()
             mock_token_model.generate_token.return_value = "raw_token_123"

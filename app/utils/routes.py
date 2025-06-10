@@ -4,6 +4,7 @@
 
 from flask import request, jsonify, url_for, render_template, current_app, Response, make_response, session
 from flask_login import login_required, current_user, logout_user
+from .. import csrf
 import io
 import csv
 import json
@@ -27,6 +28,7 @@ from ..models.config import get_config_value
 
 
 @utils_bp.route("/forgot-password", methods=["POST"])
+@csrf.exempt
 @limiter.limit("3 per hour")
 def forgot_password():
     """
@@ -56,9 +58,11 @@ def forgot_password():
             reset_url = url_for("utils.reset_password_with_token", token=raw_token, _external=True)
             template_path = get_config_value("EMAIL_RESET_PASSWORD_TEMPLATE")
 
-            # Check if user has recovery keys
-            has_recovery_keys = len(user.recovery_keys) > 0
-            unused_keys = sum(1 for key in user.recovery_keys if not key.used_at)
+            # Check if user has recovery keys (optimized with database queries)
+            from ..models.user import RecoveryKey
+            total_keys = RecoveryKey.query.filter_by(user_id=user.id).count()
+            has_recovery_keys = total_keys > 0
+            unused_keys = RecoveryKey.query.filter_by(user_id=user.id, used_at=None).count()
 
             email_html = render_template(template_path, reset_url=reset_url, user=user, has_recovery_keys=has_recovery_keys, unused_keys=unused_keys)
 
@@ -80,6 +84,7 @@ def forgot_password():
 
 
 @utils_bp.route("/reset-password/<token>", methods=["POST"])
+@csrf.exempt
 @limiter.limit("3 per hour")
 def reset_password_with_token(token):
     """
@@ -189,6 +194,7 @@ def reset_password_with_token(token):
 
 
 @utils_bp.route("/recover-with-key", methods=["POST"])
+@csrf.exempt
 @limiter.limit("5 per hour")
 def recover_with_recovery_key():
     """
@@ -237,6 +243,7 @@ def recover_with_recovery_key():
 
 
 @utils_bp.route("/export", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("3 per hour")
 def export_credentials():
@@ -313,6 +320,7 @@ def export_credentials():
 
 
 @utils_bp.route("/import", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("3 per hour")
 def import_credentials():
@@ -366,7 +374,216 @@ def import_credentials():
         return error_response("Failed to import credentials.", 500)
 
 
+@utils_bp.route("/import/preview", methods=["POST"])
+@csrf.exempt
+@login_required
+@limiter.limit("10 per hour")
+def preview_import():
+    """
+    Preview credentials from password manager export files before importing.
+    Supports Chrome, Firefox, LastPass, 1Password, Bitwarden, and KeePass formats.
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("Request data is required.", 400)
+
+    if not data.get("content"):
+        return error_response("Import content is required.", 400)
+
+    try:
+        from .import_parsers import ImportManager
+        
+        import_manager = ImportManager()
+        parser_name = data.get("format")  # Optional format hint
+        
+        # Parse the content
+        credentials, detected_format = import_manager.parse_import(data["content"], parser_name)
+        
+        # Validate credentials
+        validation_issues = import_manager.validate_credentials(credentials)
+        
+        # Return preview data
+        return success_response({
+            "detected_format": detected_format,
+            "credential_count": len(credentials),
+            "credentials": credentials,
+            "validation_issues": validation_issues,
+            "supported_formats": import_manager.get_supported_formats()
+        })
+
+    except ValueError as e:
+        return error_response(str(e), 400)
+    except Exception as e:
+        current_app.logger.error(f"Error during import preview: {e}", exc_info=True)
+        return error_response("Failed to preview import.", 500)
+
+
+@utils_bp.route("/import/password-manager", methods=["POST"])
+@csrf.exempt
+@login_required
+@limiter.limit("5 per hour")
+def import_from_password_manager():
+    """
+    Import credentials from popular password manager export files.
+    Supports Chrome, Firefox, LastPass, 1Password, Bitwarden, and KeePass formats.
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("Request data is required.", 400)
+
+    if not data.get("master_password"):
+        return error_response("Master password is required.", 400)
+
+    if not data.get("content"):
+        return error_response("Import content is required.", 400)
+
+    try:
+        # Get master encryption key using password
+        try:
+            master_key = current_user.get_master_key(data["master_password"])
+        except ValueError as e:
+            return error_response(str(e), 401)
+
+        from .import_parsers import ImportManager
+        from ..utils.password_policy import validate_credential_password
+        
+        import_manager = ImportManager()
+        parser_name = data.get("format")  # Optional format hint
+        skip_duplicates = data.get("skip_duplicates", True)
+        enforce_policy = data.get("enforce_policy", False)
+        
+        # Parse the content
+        credentials, detected_format = import_manager.parse_import(data["content"], parser_name)
+        
+        if not credentials:
+            return error_response("No valid credentials found in import data.", 400)
+
+        # Track import results
+        imported_count = 0
+        skipped_count = 0
+        error_count = 0
+        policy_violations = []
+
+        # Process each credential
+        for cred_data in credentials:
+            try:
+                service_name = cred_data.get("service_name", "")
+                username = cred_data.get("username", "")
+                password = cred_data.get("password", "")
+                
+                # Check for duplicates if requested
+                if skip_duplicates:
+                    existing_cred = Credential.query.filter_by(
+                        user_id=current_user.id,
+                        service_name=service_name,
+                        username=username
+                    ).first()
+                    
+                    if existing_cred:
+                        skipped_count += 1
+                        continue
+
+                # Validate password policy if requested
+                if enforce_policy and password:
+                    is_valid, errors, warnings = validate_credential_password(
+                        password, 
+                        {"username": current_user.username, "email": current_user.email}, 
+                        "create"
+                    )
+                    
+                    if not is_valid:
+                        policy_violations.append({
+                            "service_name": service_name,
+                            "username": username,
+                            "errors": errors
+                        })
+                        error_count += 1
+                        continue
+
+                # Create new credential
+                credential = Credential(
+                    user_id=current_user.id,
+                    service_name=service_name,
+                    service_url=cred_data.get("service_url"),
+                    username=username,
+                    category=cred_data.get("category", "imported"),
+                    notes=cred_data.get("notes"),
+                )
+
+                # Encrypt and store the password
+                if password:
+                    credential.encrypted_password = encrypt_data(master_key, password)
+                else:
+                    credential.encrypted_password = encrypt_data(master_key, "")
+
+                db.session.add(credential)
+                imported_count += 1
+
+            except Exception as e:
+                current_app.logger.error(f"Error importing credential {service_name}: {e}", exc_info=True)
+                error_count += 1
+
+        db.session.commit()
+        
+        # Log the import operation for audit
+        AuditLog.log_event(
+            user_id=current_user.id,
+            event_type="password_manager_import",
+            message=f"Imported {imported_count} credentials from {detected_format}, skipped {skipped_count}, errors {error_count}",
+            ip_address=request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr),
+            additional_data={
+                "detected_format": detected_format,
+                "imported_count": imported_count,
+                "skipped_count": skipped_count,
+                "error_count": error_count
+            }
+        )
+
+        return success_response({
+            "message": "Password manager import completed",
+            "detected_format": detected_format,
+            "imported_count": imported_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count,
+            "policy_violations": policy_violations if enforce_policy else None
+        })
+
+    except ValueError as e:
+        return error_response(str(e), 400)
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during password manager import: {e}", exc_info=True)
+        return error_response("Failed to import from password manager.", 500)
+
+
+@utils_bp.route("/import/formats", methods=["GET"])
+@login_required
+def get_import_formats():
+    """Get list of supported password manager import formats."""
+    try:
+        from .import_parsers import ImportManager
+        
+        import_manager = ImportManager()
+        formats = import_manager.get_supported_formats()
+        
+        return success_response({
+            "supported_formats": formats,
+            "format_descriptions": {
+                "Chrome/Edge/Firefox CSV": "Browser saved passwords export",
+                "LastPass CSV": "LastPass vault export",
+                "1Password CSV": "1Password vault export", 
+                "Bitwarden JSON": "Bitwarden vault export (JSON format)",
+                "Bitwarden CSV": "Bitwarden vault export (CSV format)",
+                "KeePass XML": "KeePass database export"
+            }
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error getting import formats: {e}", exc_info=True)
+        return error_response("Failed to get import formats.", 500)
+
+
 @utils_bp.route("/backup", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("3 per hour")
 def create_backup():
@@ -492,6 +709,7 @@ def create_backup():
 
 
 @utils_bp.route("/restore", methods=["POST"])
+@csrf.exempt
 @login_required  
 @limiter.limit("2 per hour")
 def restore_backup():
@@ -611,6 +829,7 @@ def get_password_policy():
 
 
 @utils_bp.route("/password-generator", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("50 per minute")
 def generate_password():
@@ -691,6 +910,7 @@ def generate_password():
 
 
 @utils_bp.route("/password-analyzer", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("100 per minute")
 def analyze_password():
@@ -922,6 +1142,7 @@ def get_security_summary():
 
 
 @utils_bp.route("/password-health-report", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("5 per minute")
 def get_password_health_report():
@@ -1067,3 +1288,113 @@ def get_password_health_report():
     except Exception as e:
         current_app.logger.error(f"Error generating password health report: {e}", exc_info=True)
         return error_response("Failed to generate password health report", 500)
+
+
+@utils_bp.route("/breach-check", methods=["POST"])
+@csrf.exempt
+@login_required
+@limiter.limit("10 per minute")
+def check_password_breach():
+    """Check if a password has been found in known data breaches."""
+    data = request.get_json()
+    if not data or "password" not in data:
+        return error_response("Password is required", 400)
+    
+    password = data["password"]
+    if not password:
+        return error_response("Password cannot be empty", 400)
+    
+    try:
+        from .breach_monitor import BreachMonitor
+        
+        is_breached, breach_count = BreachMonitor.check_password_breach(password)
+        
+        risk_level = "SAFE"
+        if is_breached:
+            if breach_count > 1000:
+                risk_level = "CRITICAL"
+            elif breach_count > 100:
+                risk_level = "HIGH"
+            else:
+                risk_level = "MEDIUM"
+        
+        response_data = {
+            "is_breached": is_breached,
+            "breach_count": breach_count,
+            "risk_level": risk_level,
+            "recommendation": "Change this password immediately" if is_breached else "Password appears secure"
+        }
+        
+        return success_response(response_data)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error checking password breach: {e}", exc_info=True)
+        return error_response("Failed to check password breach", 500)
+
+
+@utils_bp.route("/security-audit", methods=["POST"])
+@csrf.exempt
+@login_required
+@limiter.limit("3 per hour")
+def security_audit():
+    """Perform comprehensive security audit of user's credentials."""
+    data = request.get_json()
+    master_password = data.get("master_password") if data else None
+    
+    if not master_password:
+        return error_response("Master password is required for security audit", 400)
+    
+    try:
+        # Verify master password
+        try:
+            master_key = current_user.get_master_key(master_password)
+        except ValueError:
+            return error_response("Invalid master password", 401)
+        
+        # Get all user credentials
+        credentials = Credential.query.filter_by(user_id=current_user.id).all()
+        
+        # Decrypt credentials for analysis
+        from .encryption import decrypt_data
+        decrypted_credentials = []
+        
+        for credential in credentials:
+            try:
+                decrypted_password = decrypt_data(master_key, credential.encrypted_password)
+                decrypted_credentials.append({
+                    'id': credential.id,
+                    'service_name': credential.service_name,
+                    'username': credential.username,
+                    'password': decrypted_password,
+                    'created_at': credential.created_at.isoformat(),
+                    'updated_at': credential.updated_at.isoformat()
+                })
+            except Exception as decrypt_error:
+                current_app.logger.warning(f"Failed to decrypt credential {credential.id}: {decrypt_error}")
+                continue
+        
+        # Perform security analysis
+        from .breach_monitor import analyze_credential_security, generate_security_recommendations
+        
+        analysis_results = analyze_credential_security(decrypted_credentials)
+        recommendations = generate_security_recommendations(analysis_results)
+        
+        # Remove actual password data from response for security
+        sanitized_results = {
+            'total_credentials': analysis_results['total_credentials'],
+            'breached_passwords': analysis_results['breached_passwords'],
+            'weak_passwords': analysis_results['weak_passwords'],
+            'reused_passwords_count': len(analysis_results['reused_passwords']),
+            'high_risk_count': len(analysis_results['high_risk_passwords']),
+            'analysis_timestamp': analysis_results['analysis_timestamp'],
+            'recommendations': recommendations
+        }
+        
+        return success_response({
+            'audit_results': sanitized_results,
+            'next_recommended_audit': 'Schedule next audit in 30 days'
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error performing security audit: {e}", exc_info=True)
+        return error_response("Failed to perform security audit", 500)

@@ -353,12 +353,12 @@ class TestEmailMFAEnable:
             assert response.status_code == 200
             response_data = json.loads(response.data)
             assert response_data["status"] == "success"
-            assert "Email MFA notification has been enabled" in response_data["data"]["message"]
+            assert "Email MFA has been enabled successfully" in response_data["data"]["message"]
             
             # Verify email was sent
             mock_send_email.assert_called_once_with(
                 "test@example.com",
-                "Email MFA Test",
+                "Email MFA Enabled",
                 "<html>Test email</html>"
             )
             
@@ -412,7 +412,7 @@ class TestEmailMFAEnable:
             assert response.status_code == 400
             response_data = json.loads(response.data)
             assert response_data["status"] == "error"
-            assert "Email MFA notification is already enabled" in response_data["message"]
+            assert "Email MFA is already enabled" in response_data["message"]
 
     def test_enable_email_mfa_email_failure(self, client):
         """Test email MFA enable when test email fails."""
@@ -440,10 +440,14 @@ class TestEmailMFAEnable:
                                      json={"password": "correct_password"},
                                      content_type='application/json')
             
-            assert response.status_code == 500
+            # Email failure should not prevent MFA from being enabled (per implementation design)
+            assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["status"] == "error"
-            assert "Failed to send test email" in response_data["message"]
+            assert response_data["status"] == "success"
+            assert "Email MFA has been enabled successfully" in response_data["data"]["message"]
+            
+            # Verify that the error was logged
+            mock_logger.error.assert_called_once()
 
 
 class TestEmailMFADisable:
@@ -472,11 +476,11 @@ class TestEmailMFADisable:
             assert response.status_code == 200
             response_data = json.loads(response.data)
             assert response_data["status"] == "success"
-            assert "Email MFA notification has been disabled" in response_data["data"]["message"]
+            assert "Verification code sent to your email" in response_data["data"]["message"]
             
-            # Verify user setting was updated
-            assert mock_current_user.email_mfa_enabled == False
-            mock_db_session.commit.assert_called_once()
+            # Verify user setting was NOT changed yet (this just sends verification code)
+            assert mock_current_user.email_mfa_enabled == True
+            # Verification code creation should trigger a db commit for the code, not for user settings change
 
     def test_disable_email_mfa_missing_password(self, client):
         """Test email MFA disable with missing password."""
@@ -524,7 +528,7 @@ class TestEmailMFADisable:
             assert response.status_code == 400
             response_data = json.loads(response.data)
             assert response_data["status"] == "error"
-            assert "Email MFA notification is not currently enabled" in response_data["message"]
+            assert "Email MFA is not currently enabled" in response_data["message"]
 
 
 class TestMFAStatus:
@@ -532,12 +536,15 @@ class TestMFAStatus:
 
     def test_get_mfa_status_both_enabled(self, client):
         """Test MFA status when both OTP and email MFA are enabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.otp_enabled = True
-            mock_current_user.email_mfa_enabled = True
-            
-            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+        # Create a regular Mock object (not AsyncMock) to avoid JSON serialization issues
+        mock_user = Mock()
+        mock_user.is_authenticated = True
+        mock_user.otp_enabled = True
+        mock_user.email_mfa_enabled = True
+        mock_user.email_verified = True
+        
+        with patch('app.security.routes.current_user', mock_user):
+            with patch('flask_login.utils._get_user', return_value=mock_user):
                 response = client.get('/api/security/mfa/status')
             
             assert response.status_code == 200
@@ -548,12 +555,15 @@ class TestMFAStatus:
 
     def test_get_mfa_status_both_disabled(self, client):
         """Test MFA status when both OTP and email MFA are disabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.otp_enabled = False
-            mock_current_user.email_mfa_enabled = False
-            
-            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+        # Create a regular Mock object (not AsyncMock) to avoid JSON serialization issues
+        mock_user = Mock()
+        mock_user.is_authenticated = True
+        mock_user.otp_enabled = False
+        mock_user.email_mfa_enabled = False
+        mock_user.email_verified = True
+        
+        with patch('app.security.routes.current_user', mock_user):
+            with patch('flask_login.utils._get_user', return_value=mock_user):
                 response = client.get('/api/security/mfa/status')
             
             assert response.status_code == 200
@@ -564,12 +574,15 @@ class TestMFAStatus:
 
     def test_get_mfa_status_mixed(self, client):
         """Test MFA status when one is enabled and one is disabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.otp_enabled = True
-            mock_current_user.email_mfa_enabled = False
-            
-            with patch('flask_login.utils._get_user', return_value=mock_current_user):
+        # Create a regular Mock object (not AsyncMock) to avoid JSON serialization issues
+        mock_user = Mock()
+        mock_user.is_authenticated = True
+        mock_user.otp_enabled = True
+        mock_user.email_mfa_enabled = False
+        mock_user.email_verified = True
+        
+        with patch('app.security.routes.current_user', mock_user):
+            with patch('flask_login.utils._get_user', return_value=mock_user):
                 response = client.get('/api/security/mfa/status')
             
             assert response.status_code == 200

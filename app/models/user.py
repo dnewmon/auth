@@ -38,7 +38,7 @@ class User(db.Model, UserMixin):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     email_verified = db.Column(db.Boolean, default=False, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     # Salt for deriving the user-specific credential encryption key
@@ -241,3 +241,14 @@ class User(db.Model, UserMixin):
             db.session.add(recovery_key)
 
         return recovery_keys
+
+    def increment_session_version(self):
+        """Increment session version to invalidate existing sessions."""
+        if self.session_version is None:
+            self.session_version = 2  # Start at 2 since default is 1
+        else:
+            self.session_version += 1
+
+    def update_last_login(self):
+        """Update the last login timestamp."""
+        self.last_login = datetime.datetime.now(timezone.utc)

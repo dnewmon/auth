@@ -9,12 +9,13 @@ from flask_login import login_user, logout_user, login_required, current_user
 import logging
 import pyotp  # Add pyotp import
 from email_validator import validate_email, EmailNotValidError
-from .. import limiter
+from .. import limiter, csrf
 from ..models.config import get_config_value
 from datetime import datetime, timezone
 
 
 @auth_bp.route("/register", methods=["POST"])
+@csrf.exempt
 @limiter.limit("5 per hour")
 def register():
     data = request.get_json()
@@ -95,6 +96,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@csrf.exempt
 @limiter.limit("10 per minute")
 def login():
     data = request.get_json()
@@ -110,6 +112,11 @@ def login():
     user = User.query.filter_by(username=username).first()
 
     if user and user.check_password(password):  # Uses Argon2 check
+        # Check if email is verified
+        if not user.email_verified:
+            current_app.logger.warning(f"Login attempt with unverified email for user '{username}'")
+            return error_response("Please verify your email address before logging in. Check your inbox for the verification link.", 403)
+        
         # Check if OTP is enabled (prioritize OTP as more secure)
         if user.otp_enabled:
             # Store user ID in session to indicate first factor success
@@ -184,6 +191,7 @@ def login():
 
 
 @auth_bp.route("/login/verify-otp", methods=["POST"])
+@csrf.exempt
 @limiter.limit("10 per minute")
 def login_verify_otp():
     """Verifies the OTP token after successful password authentication."""
@@ -251,6 +259,7 @@ def login_verify_otp():
 
 
 @auth_bp.route("/login/verify-email", methods=["POST"])
+@csrf.exempt
 @limiter.limit("10 per minute")
 def login_verify_email():
     """Verifies the email verification code after successful password authentication."""
@@ -321,6 +330,7 @@ def login_verify_email():
 
 
 @auth_bp.route("/login/switch-to-email", methods=["POST"])
+@csrf.exempt
 @limiter.limit("10 per minute")
 def login_switch_to_email():
     """Switch from OTP to email MFA fallback when both are enabled."""
@@ -357,6 +367,7 @@ def login_switch_to_email():
 
 
 @auth_bp.route("/logout", methods=["POST"])
+@csrf.exempt
 @login_required
 def logout():
     logout_user()
@@ -385,6 +396,7 @@ def get_recovery_key_status():
 
 
 @auth_bp.route("/recovery-keys", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("5 per day")
 def regenerate_recovery_keys():
@@ -439,6 +451,7 @@ def verify_email(token):
 
 
 @auth_bp.route("/resend-verification", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("3 per hour")
 def resend_verification_email():

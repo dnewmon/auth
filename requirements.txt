@@ -10,6 +10,7 @@ pyotp
 qrcode
 email-validator
 Pillow  # Required by qrcode
+requests  # For breach monitoring API calls
 cryptography
 pydantic
 dotenv

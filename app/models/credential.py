@@ -25,6 +25,7 @@ class Credential(db.Model):
         db.Index('idx_user_category', 'user_id', 'category'),
         db.Index('idx_user_service', 'user_id', 'service_name'),
         db.Index('idx_user_created', 'user_id', 'created_at'),
+        db.Index('idx_duplicate_detection', 'user_id', 'service_name', 'username'),  # For duplicate detection
     )
 
     def __repr__(self):

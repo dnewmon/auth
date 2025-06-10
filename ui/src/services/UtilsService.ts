@@ -28,6 +28,19 @@ export interface ImportCredentialsRequest {
     master_password: string;
 }
 
+export interface ImportPreviewRequest {
+    content: string;
+    format?: string;
+}
+
+export interface ImportPasswordManagerRequest {
+    content: string;
+    master_password: string;
+    format?: string;
+    skip_duplicates?: boolean;
+    enforce_policy?: boolean;
+}
+
 // Response data interfaces
 export interface MessageData {
     message: string;
@@ -47,11 +60,48 @@ export interface ExportData {
     message?: string;
 }
 
+export interface ImportFormatsData {
+    supported_formats: string[];
+    format_descriptions: Record<string, string>;
+}
+
+export interface ValidationIssue {
+    index: number;
+    service_name: string;
+    issues: string[];
+}
+
+export interface ImportPreviewData {
+    detected_format: string;
+    credential_count: number;
+    credentials: CredentialData[];
+    validation_issues: ValidationIssue[];
+    supported_formats: string[];
+}
+
+export interface PolicyViolation {
+    service_name: string;
+    username: string;
+    errors: string[];
+}
+
+export interface ImportPasswordManagerData {
+    message: string;
+    detected_format: string;
+    imported_count: number;
+    skipped_count: number;
+    error_count: number;
+    policy_violations?: PolicyViolation[];
+}
+
 // Response interfaces
 export interface MessageResponse extends SuccessResponse<MessageData> {}
 export interface ResetPasswordResponse extends SuccessResponse<ResetPasswordData> {}
 export interface RecoverWithKeyResponse extends SuccessResponse<RecoverWithKeyData> {}
 export interface ExportResponse extends SuccessResponse<ExportData> {}
+export interface ImportFormatsResponse extends SuccessResponse<ImportFormatsData> {}
+export interface ImportPreviewResponse extends SuccessResponse<ImportPreviewData> {}
+export interface ImportPasswordManagerResponse extends SuccessResponse<ImportPasswordManagerData> {}
 
 export class UtilsService {
     private static readonly BASE_URL = '/api/utils';
@@ -94,6 +144,21 @@ export class UtilsService {
 
     static async importCredentials(request: ImportCredentialsRequest): Promise<MessageData> {
         const response = await axios.post<MessageResponse>(`${this.BASE_URL}/import`, request);
+        return response.data.data;
+    }
+
+    static async getImportFormats(): Promise<ImportFormatsData> {
+        const response = await axios.get<ImportFormatsResponse>(`${this.BASE_URL}/import/formats`);
+        return response.data.data;
+    }
+
+    static async previewPasswordManagerImport(request: ImportPreviewRequest): Promise<ImportPreviewData> {
+        const response = await axios.post<ImportPreviewResponse>(`${this.BASE_URL}/import/preview`, request);
+        return response.data.data;
+    }
+
+    static async importFromPasswordManager(request: ImportPasswordManagerRequest): Promise<ImportPasswordManagerData> {
+        const response = await axios.post<ImportPasswordManagerResponse>(`${this.BASE_URL}/import/password-manager`, request);
         return response.data.data;
     }
 }

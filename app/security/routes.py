@@ -13,13 +13,14 @@ from . import security_bp
 from ..models import db, User, MfaVerificationCode
 from ..utils.responses import success_response, error_response
 from ..utils.email import send_email
-from .. import limiter
+from .. import limiter, csrf
 from ..models.config import get_config_value
 
 
 @security_bp.route("/otp/setup", methods=["POST"])
 @login_required
 @limiter.limit("5 per hour")
+@csrf.exempt
 def otp_setup():
     """Generates an OTP secret and provisioning URI for the current user."""
     user = current_user
@@ -71,6 +72,7 @@ def otp_setup():
 
 @security_bp.route("/otp/verify-enable", methods=["POST"])
 @login_required
+@csrf.exempt
 def otp_verify_enable():
     """Verifies the OTP token provided by the user and enables OTP."""
     user = current_user
@@ -119,6 +121,7 @@ def otp_verify_enable():
 @security_bp.route("/otp/disable", methods=["POST"])
 @login_required
 @limiter.limit("5 per hour")
+@csrf.exempt
 def otp_disable():
     """Disables OTP for the current user."""
     user = current_user
@@ -155,6 +158,7 @@ def otp_disable():
 @security_bp.route("/mfa/email/enable", methods=["POST"])
 @login_required
 @limiter.limit("5 per hour")
+@csrf.exempt
 def enable_email_mfa():
     """Enables email MFA for the current user."""
     user = current_user
@@ -192,6 +196,7 @@ def enable_email_mfa():
 @security_bp.route("/mfa/email/disable", methods=["POST"])
 @login_required
 @limiter.limit("5 per hour")
+@csrf.exempt
 def disable_email_mfa():
     """Initiates the process to disable email MFA by sending a verification code."""
     user = current_user
@@ -228,6 +233,7 @@ def disable_email_mfa():
 @security_bp.route("/mfa/email/disable/verify", methods=["POST"])
 @login_required
 @limiter.limit("10 per minute")
+@csrf.exempt
 def verify_disable_email_mfa():
     """Verifies the code and disables email MFA."""
     user = current_user

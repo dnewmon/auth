@@ -20,15 +20,15 @@ class TestCredentialWorkflow:
         """Test complete credential lifecycle with password policy enforcement."""
         # 1. Register user
         response = client.post('/api/auth/register', json={
-            'username': 'testuser',
-            'email': 'test@example.com', 
+            'username': 'integration_testuser',
+            'email': 'integration_test@example.com', 
             'password': 'TestPassword123!'
         })
         assert response.status_code == 201
         
         # 2. Login
         response = client.post('/api/auth/login', json={
-            'username': 'testuser',
+            'username': 'integration_testuser',
             'password': 'TestPassword123!'
         })
         assert response.status_code == 200
@@ -90,9 +90,9 @@ class TestCredentialSharingWorkflow:
     def test_complete_sharing_workflow(self, client, app_context):
         """Test complete credential sharing workflow."""
         # Setup users
-        owner = User(username="owner", email="owner@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
+        owner = User(username="sharing_owner", email="sharing_owner@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
         owner.set_password("password123")
-        recipient = User(username="recipient", email="recipient@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test2')
+        recipient = User(username="sharing_recipient", email="sharing_recipient@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test2')
         recipient.set_password("password123")
         db.session.add(owner)
         db.session.add(recipient)
@@ -101,6 +101,7 @@ class TestCredentialSharingWorkflow:
         # Initialize encryption
         owner.initialize_encryption("password123")
         recipient.initialize_encryption("password123")
+        db.session.commit()
         
         # Create credential
         from app.utils.encryption import encrypt_data
@@ -121,7 +122,7 @@ class TestCredentialSharingWorkflow:
             
             # 1. Share credential
             response = client.post(f'/api/credentials/{credential.id}/share', json={
-                'recipient_email': 'recipient@example.com',
+                'recipient_email': 'sharing_recipient@example.com',
                 'can_view': True,
                 'can_edit': False,
                 'expires_days': 30,

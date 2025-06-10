@@ -1,6 +1,8 @@
 import logging
 from flask import request, jsonify, abort, session, current_app
 from flask_login import login_required, current_user
+from .. import csrf
+from sqlalchemy.orm import joinedload
 from . import credentials_bp
 from .. import db
 from ..models.user import User
@@ -20,6 +22,7 @@ MASTER_PASSWORD_TIMEOUT = 300  # 5 minutes
 
 
 @credentials_bp.route("/verify-master", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("10 per minute")
 def verify_master_password():
@@ -79,6 +82,7 @@ def require_master_password():
 
 
 @credentials_bp.route("/", methods=["POST"])
+@csrf.exempt
 @login_required
 def create_credential():
     """Create a new credential for the logged-in user."""
@@ -217,6 +221,7 @@ def list_credentials():
 
 
 @credentials_bp.route("/<int:credential_id>", methods=["POST"])
+@csrf.exempt
 @login_required
 def get_credential(credential_id):
     """Get a specific credential's details including decrypted password."""
@@ -255,6 +260,7 @@ def get_credential(credential_id):
 
 
 @credentials_bp.route("/<int:credential_id>", methods=["PUT"])
+@csrf.exempt
 @login_required
 def update_credential(credential_id):
     """Update an existing credential."""
@@ -341,6 +347,7 @@ def update_credential(credential_id):
 
 
 @credentials_bp.route("/<int:credential_id>", methods=["DELETE"])
+@csrf.exempt
 @login_required
 def delete_credential(credential_id):
     """Delete a credential."""
@@ -371,6 +378,7 @@ def delete_credential(credential_id):
 # Credential sharing endpoints
 
 @credentials_bp.route("/<int:credential_id>/share", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("10 per hour")
 def share_credential(credential_id):
@@ -438,14 +446,18 @@ def share_credential(credential_id):
         if not recipient.encrypted_master_key:
             return error_response("Recipient has not set up encryption", 400)
         
-        # For sharing, we'll use a temporary approach where recipient needs to accept with their password
-        # In a real implementation, you might use key exchange or have recipients generate share-specific keys
+        # Encrypt the credential data for the recipient
+        # We'll store the plaintext credential data encrypted with the recipient's key
+        # Since we can't get recipient's master key here, we'll use a different approach:
+        # Store the plaintext data encrypted with a temporary key derived from both users' IDs
         import json
         credential_json = json.dumps(credential_data)
         
-        # For now, we'll store it temporarily and let the recipient decrypt it when they accept
-        # This is a simplified implementation - in production you'd want more sophisticated key management
-        encrypted_for_recipient = encrypt_data(owner_master_key, credential_json)  # Temporary solution
+        # Generate a temporary sharing key from recipient's encryption salt
+        # This allows the recipient to decrypt with their own credentials
+        from ..utils.encryption import derive_key
+        sharing_key = derive_key(f"share_{current_user.id}_{recipient.id}", recipient.encryption_salt)
+        encrypted_for_recipient = encrypt_data(sharing_key, credential_json)
         
         # Calculate expiration date
         expires_at = None
@@ -510,11 +522,14 @@ def get_shared_credentials():
     try:
         from ..models.shared_credential import SharedCredential
         
-        # Get shares where current user is the recipient
+        # Get shares where current user is the recipient (with eager loading to avoid N+1 queries)
         shares = SharedCredential.query.filter_by(
             recipient_id=current_user.id
         ).filter(
             SharedCredential.status.in_(['pending', 'accepted'])
+        ).options(
+            joinedload(SharedCredential.credential),
+            joinedload(SharedCredential.owner)
         ).all()
         
         # Filter out expired shares
@@ -549,6 +564,7 @@ def get_shared_credentials():
 
 
 @credentials_bp.route("/shared/<int:share_id>/accept", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("10 per minute") 
 def accept_shared_credential(share_id):
@@ -585,13 +601,43 @@ def accept_shared_credential(share_id):
         except ValueError as e:
             return error_response(str(e), 401)
         
+        # Decrypt the shared credential data using the sharing key
+        try:
+            from ..utils.encryption import decrypt_data, encrypt_data, derive_key
+            import json
+            
+            # Generate the same sharing key that was used when creating the share
+            sharing_key = derive_key(f"share_{share.owner_id}_{current_user.id}", current_user.encryption_salt)
+            
+            # Decrypt the shared credential data
+            decrypted_data = decrypt_data(sharing_key, share.encrypted_data_for_recipient)
+            credential_data = json.loads(decrypted_data)
+            
+            # Create a new credential for the recipient with their encryption
+            new_credential = Credential(
+                user_id=current_user.id,
+                service_name=credential_data['service_name'],
+                service_url=credential_data.get('service_url'),
+                username=credential_data['username'],
+                encrypted_password=encrypt_data(recipient_master_key, credential_data['password']),
+                notes=credential_data.get('notes'),
+                category=credential_data.get('category')
+            )
+            
+            db.session.add(new_credential)
+            
+        except Exception as decrypt_error:
+            current_app.logger.error(f"Error decrypting shared credential data: {decrypt_error}", exc_info=True)
+            return error_response("Failed to decrypt shared credential data", 400)
+        
         # Accept the share
         share.accept()
         db.session.commit()
         
         return success_response({
-            'message': 'Shared credential accepted successfully',
-            'share_id': share.id
+            'message': 'Shared credential accepted successfully and added to your vault',
+            'share_id': share.id,
+            'new_credential_id': new_credential.id
         })
         
     except Exception as e:
@@ -601,6 +647,7 @@ def accept_shared_credential(share_id):
 
 
 @credentials_bp.route("/shared/<int:share_id>/reject", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("10 per minute")
 def reject_shared_credential(share_id):
@@ -651,6 +698,8 @@ def get_credential_shares(credential_id):
         shares = SharedCredential.query.filter_by(
             credential_id=credential_id,
             owner_id=current_user.id
+        ).options(
+            joinedload(SharedCredential.recipient)
         ).all()
         
         shares_data = []
@@ -674,6 +723,7 @@ def get_credential_shares(credential_id):
 
 
 @credentials_bp.route("/shared/<int:share_id>/revoke", methods=["POST"])
+@csrf.exempt
 @login_required
 @limiter.limit("10 per minute")
 def revoke_shared_credential(share_id):

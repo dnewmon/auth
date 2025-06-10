@@ -747,3 +747,300 @@ Get security summary and recent alerts for the current user.
     }
 }
 ```
+
+## Password Manager Import
+
+### Get Import Formats
+
+Get list of supported password manager import formats.
+
+-   **URL**: `/utils/import/formats`
+-   **Method**: `GET`
+-   **Authentication**: Required
+
+**Response**:
+
+```json
+{
+    "success": true,
+    "data": {
+        "supported_formats": [
+            "Chrome/Edge/Firefox CSV",
+            "LastPass CSV",
+            "1Password CSV",
+            "Bitwarden JSON",
+            "Bitwarden CSV",
+            "KeePass XML"
+        ],
+        "format_descriptions": {
+            "Chrome/Edge/Firefox CSV": "Browser saved passwords export",
+            "LastPass CSV": "LastPass vault export",
+            "1Password CSV": "1Password vault export",
+            "Bitwarden JSON": "Bitwarden vault export (JSON format)",
+            "Bitwarden CSV": "Bitwarden vault export (CSV format)",
+            "KeePass XML": "KeePass database export"
+        }
+    }
+}
+```
+
+### Preview Import
+
+Preview credentials from password manager export files before importing. Supports automatic format detection and validation.
+
+-   **URL**: `/utils/import/preview`
+-   **Method**: `POST`
+-   **Authentication**: Required
+-   **Rate Limit**: 10 requests per hour
+
+**Request Body**:
+
+```json
+{
+    "content": "CSV/JSON/XML content from password manager export",
+    "format": "Chrome/Edge/Firefox CSV"  // Optional format hint
+}
+```
+
+**Response**:
+
+```json
+{
+    "success": true,
+    "data": {
+        "detected_format": "Chrome/Edge/Firefox CSV",
+        "credential_count": 3,
+        "credentials": [
+            {
+                "service_name": "Gmail",
+                "service_url": "https://gmail.com",
+                "username": "user@gmail.com",
+                "password": "password123",
+                "category": "imported",
+                "notes": "Imported from Chrome/Edge/Firefox"
+            }
+        ],
+        "validation_issues": [
+            {
+                "index": 1,
+                "service_name": "WeakService",
+                "issues": ["Weak password (less than 8 characters)"]
+            }
+        ],
+        "supported_formats": [
+            "Chrome/Edge/Firefox CSV",
+            "LastPass CSV",
+            "1Password CSV",
+            "Bitwarden JSON",
+            "Bitwarden CSV",
+            "KeePass XML"
+        ]
+    }
+}
+```
+
+**Error Responses**:
+
+```json
+{
+    "success": false,
+    "error": "Could not detect import format. Supported formats: Chrome/Edge/Firefox CSV, LastPass CSV, 1Password CSV, Bitwarden JSON/CSV, KeePass XML"
+}
+```
+
+### Import from Password Manager
+
+Import credentials from popular password manager export files with support for duplicate detection and password policy enforcement.
+
+-   **URL**: `/utils/import/password-manager`
+-   **Method**: `POST`
+-   **Authentication**: Required
+-   **Rate Limit**: 5 requests per hour
+
+**Request Body**:
+
+```json
+{
+    "content": "CSV/JSON/XML content from password manager export",
+    "master_password": "YourMasterPassword",
+    "format": "Chrome/Edge/Firefox CSV",  // Optional format hint
+    "skip_duplicates": true,              // Optional, default: true
+    "enforce_policy": false               // Optional, default: false
+}
+```
+
+**Parameters**:
+- `content`: The raw export data from your password manager
+- `master_password`: Your current master password for encryption
+- `format`: Optional format hint (auto-detected if not provided)
+- `skip_duplicates`: Skip credentials that already exist (matched by service name + username)
+- `enforce_policy`: Apply password policy validation during import
+
+**Response**:
+
+```json
+{
+    "success": true,
+    "data": {
+        "message": "Password manager import completed",
+        "detected_format": "Chrome/Edge/Firefox CSV",
+        "imported_count": 2,
+        "skipped_count": 1,
+        "error_count": 0,
+        "policy_violations": [
+            {
+                "service_name": "WeakService",
+                "username": "user",
+                "errors": ["Password too weak"]
+            }
+        ]
+    }
+}
+```
+
+**Error Responses**:
+
+```json
+{
+    "success": false,
+    "error": "Master password is required."
+}
+```
+
+```json
+{
+    "success": false,
+    "error": "Import content is required."
+}
+```
+
+```json
+{
+    "success": false,
+    "error": "No valid credentials found in import data."
+}
+```
+
+## Supported Password Manager Formats
+
+### Chrome/Edge/Firefox CSV
+Browser saved passwords export format with columns: name, url, username, password
+
+**Example**:
+```csv
+name,url,username,password
+Gmail,https://gmail.com,user@gmail.com,password123
+Facebook,https://facebook.com,myuser,fb_password
+```
+
+### LastPass CSV
+LastPass vault export with columns: url, username, password, extra, name, grouping, fav
+
+**Example**:
+```csv
+url,username,password,extra,name,grouping,fav
+https://gmail.com,user@gmail.com,password123,Notes here,Gmail,Email,0
+https://facebook.com,myuser,fb_password,,Facebook,Social,1
+```
+
+### 1Password CSV
+1Password vault export with columns: Title, Website, Username, Password, Notes
+
+**Example**:
+```csv
+Title,Website,Username,Password,Notes
+Gmail,https://gmail.com,user@gmail.com,password123,Work email
+Facebook,https://facebook.com,myuser,fb_password,Social media
+```
+
+### Bitwarden JSON
+Bitwarden JSON vault export with full metadata structure
+
+**Example**:
+```json
+{
+    "encrypted": false,
+    "folders": [{"id": "folder1", "name": "Work"}],
+    "items": [
+        {
+            "id": "item1",
+            "type": 1,
+            "name": "Gmail",
+            "folderId": "folder1",
+            "login": {
+                "username": "user@gmail.com",
+                "password": "password123",
+                "uris": [{"uri": "https://gmail.com"}]
+            }
+        }
+    ]
+}
+```
+
+### Bitwarden CSV
+Bitwarden CSV vault export with columns: folder, favorite, type, name, notes, fields, login_uri, login_username, login_password, login_totp
+
+**Example**:
+```csv
+folder,favorite,type,name,notes,fields,login_uri,login_username,login_password,login_totp
+Work,0,login,Gmail,Work email,,https://gmail.com,user@gmail.com,password123,
+Personal,1,login,Facebook,Social,,https://facebook.com,myuser,fb_password,
+```
+
+### KeePass XML
+KeePass database XML export with Entry elements containing String key-value pairs
+
+**Example**:
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<KeePassFile>
+    <Root>
+        <Group>
+            <Entry>
+                <String><Key>Title</Key><Value>Gmail</Value></String>
+                <String><Key>UserName</Key><Value>user@gmail.com</Value></String>
+                <String><Key>Password</Key><Value>password123</Value></String>
+                <String><Key>URL</Key><Value>https://gmail.com</Value></String>
+                <String><Key>Notes</Key><Value>Work email</Value></String>
+            </Entry>
+        </Group>
+    </Root>
+</KeePassFile>
+```
+
+## Import Process
+
+### Step 1: Export from Your Password Manager
+1. **Chrome/Edge/Firefox**: Go to Settings > Passwords > Export passwords
+2. **LastPass**: Vault > Advanced Options > Export > LastPass CSV File
+3. **1Password**: Export > All Items > CSV format
+4. **Bitwarden**: Tools > Export Vault > JSON or CSV format
+5. **KeePass**: File > Export > XML format
+
+### Step 2: Preview Your Import
+Use the `/utils/import/preview` endpoint to:
+- Verify format detection works correctly
+- Check how many credentials will be imported
+- Review validation issues or warnings
+- See how credentials will be organized
+
+### Step 3: Configure Import Options
+- **Skip Duplicates**: Prevent importing credentials that already exist
+- **Enforce Policy**: Apply password policy validation during import
+- **Format Override**: Specify format if auto-detection fails
+
+### Step 4: Import Your Data
+Use the `/utils/import/password-manager` endpoint to complete the import process. The system will:
+- Parse your export data using the appropriate parser
+- Validate credentials according to your settings
+- Encrypt passwords using your master key
+- Skip or report duplicates based on your configuration
+- Log the import operation for security auditing
+
+### Security Considerations
+- All passwords are re-encrypted with your current master key during import
+- Import operations are logged in the audit trail
+- Rate limiting prevents bulk import abuse
+- Duplicate detection helps prevent credential bloat
+- Password policy enforcement maintains security standards
+- Original export files should be securely deleted after import

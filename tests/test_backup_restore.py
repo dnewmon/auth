@@ -115,6 +115,7 @@ class TestBackupRestore:
         db.session.commit()
         
         user.initialize_encryption("password123")
+        db.session.commit()
         
         # Create mock backup data
         backup_data = {
@@ -163,7 +164,7 @@ class TestBackupRestore:
         # Verify passwords were encrypted correctly
         master_key = user.get_master_key("password123")
         from app.utils.encryption import decrypt_data
-        gmail_cred = Credential.query.filter_by(service_name="Gmail").first()
+        gmail_cred = Credential.query.filter_by(service_name="Gmail", user_id=user.id).first()
         decrypted_password = decrypt_data(master_key, gmail_cred.encrypted_password)
         assert decrypted_password == "gmail_password"
     
@@ -176,6 +177,7 @@ class TestBackupRestore:
         db.session.commit()
         
         user.initialize_encryption("password123")
+        db.session.commit()
         
         # Create an existing credential
         from app.utils.encryption import encrypt_data
@@ -217,7 +219,7 @@ class TestBackupRestore:
         
         # Verify original password is unchanged
         from app.utils.encryption import decrypt_data
-        gmail_cred = Credential.query.filter_by(service_name="Gmail").first()
+        gmail_cred = Credential.query.filter_by(service_name="Gmail", user_id=user.id).first()
         decrypted_password = decrypt_data(master_key, gmail_cred.encrypted_password)
         assert decrypted_password == "existing_password"
     

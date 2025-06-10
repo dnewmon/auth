@@ -192,7 +192,7 @@ class TestPasswordPolicyIntegration:
     def test_create_credential_with_weak_password(self, client, app_context):
         """Test credential creation with weak password is rejected."""
         # Create user
-        user = User(username="testuser", email="test@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
+        user = User(username="testuser_weak", email="test_weak@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
         user.set_password("password123")
         db.session.add(user)
         db.session.commit()
@@ -203,7 +203,7 @@ class TestPasswordPolicyIntegration:
             response = client.post('/api/credentials/',
                                  json={
                                      'service_name': 'Test Service',
-                                     'username': 'testuser',
+                                     'username': 'testuser_weak',
                                      'password': 'weak',  # Violates policy
                                      'master_password': 'password123'
                                  },
@@ -216,7 +216,7 @@ class TestPasswordPolicyIntegration:
     def test_create_credential_with_strong_password(self, client, app_context):
         """Test credential creation with strong password succeeds."""
         # Create user
-        user = User(username="testuser", email="test@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
+        user = User(username="testuser_strong", email="test_strong@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
         user.set_password("password123")
         db.session.add(user)
         db.session.commit()
@@ -227,8 +227,8 @@ class TestPasswordPolicyIntegration:
             response = client.post('/api/credentials/',
                                  json={
                                      'service_name': 'Test Service',
-                                     'username': 'testuser',
-                                     'password': 'StrongPassword123!',
+                                     'username': 'testuser_strong',
+                                     'password': 'StrongPassword84!',
                                      'master_password': 'password123'
                                  },
                                  content_type='application/json')
@@ -240,7 +240,7 @@ class TestPasswordPolicyIntegration:
     def test_update_credential_with_weak_password(self, client, app_context):
         """Test credential update with weak password is rejected."""
         # Create user
-        user = User(username="testuser", email="test@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
+        user = User(username="testuser_update", email="test_update@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
         user.set_password("password123")
         db.session.add(user)
         db.session.commit()
@@ -273,7 +273,7 @@ class TestPasswordPolicyIntegration:
     
     def test_get_password_policy_endpoint(self, client, app_context):
         """Test getting password policy configuration."""
-        user = User(username="testuser", email="test@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
+        user = User(username="testuser_policy", email="test_policy@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
         user.set_password("password123")
         db.session.add(user)
         db.session.commit()
@@ -299,7 +299,7 @@ class TestPasswordPolicyIntegration:
             mock_config.side_effect = config_side_effect
             
             # Create user
-            user = User(username="testuser", email="test@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
+            user = User(username="testuser_warn", email="test_warn@example.com", encryption_salt=b'salt_32_chars_long_enough_for_test')
             user.set_password("password123")
             db.session.add(user)
             db.session.commit()
@@ -310,7 +310,7 @@ class TestPasswordPolicyIntegration:
                 response = client.post('/api/credentials/',
                                      json={
                                          'service_name': 'Test Service',
-                                         'username': 'testuser',
+                                         'username': 'testuser_warn',
                                          'password': 'weak',  # Would normally violate policy
                                          'master_password': 'password123'
                                      },
@@ -329,7 +329,7 @@ class TestPasswordPolicyUtilityFunctions:
     
     def test_validate_credential_password_function(self):
         """Test the convenience function for credential password validation."""
-        password = "StrongPassword123!"
+        password = "StrongPassword84!"
         user_info = {"username": "testuser", "email": "test@example.com"}
         
         is_valid, errors, warnings = validate_credential_password(password, user_info, "create")

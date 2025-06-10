@@ -406,12 +406,28 @@ class TestCredentialSharingEndpoints:
         db.session.add(credential)
         db.session.commit()
         
+        # Create properly encrypted shared credential data
+        from app.utils.encryption import encrypt_data, derive_key
+        import json
+        
+        credential_data = {
+            'service_name': 'Test Service',
+            'username': 'testuser', 
+            'password': 'testpassword',
+            'category': 'test',
+            'notes': 'Test notes'
+        }
+        
+        # Encrypt using the sharing key pattern we implemented
+        sharing_key = derive_key(f"share_{owner.id}_{recipient.id}", recipient.encryption_salt)
+        encrypted_data = encrypt_data(sharing_key, json.dumps(credential_data))
+        
         # Create shared credential
         share = SharedCredential(
             credential_id=credential.id,
             owner_id=owner.id,
             recipient_id=recipient.id,
-            encrypted_data_for_recipient="encrypted_data",
+            encrypted_data_for_recipient=encrypted_data,
             status='pending'
         )
         db.session.add(share)
@@ -425,11 +441,19 @@ class TestCredentialSharingEndpoints:
         assert response.status_code == 200
         response_data = json.loads(response.data)
         assert response_data['status'] == 'success'
+        assert 'new_credential_id' in response_data['data']
         
         # Verify status changed in database
         db.session.refresh(share)
         assert share.status == 'accepted'
         assert share.accepted_at is not None
+        
+        # Verify new credential was created for recipient
+        new_credential = Credential.query.get(response_data['data']['new_credential_id'])
+        assert new_credential is not None
+        assert new_credential.user_id == recipient.id
+        assert new_credential.service_name == 'Test Service'
+        assert new_credential.username == 'testuser'
     
     def test_reject_shared_credential(self, client, app_context):
         """Test rejecting a shared credential."""

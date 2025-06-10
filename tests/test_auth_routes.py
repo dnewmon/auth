@@ -161,9 +161,10 @@ class TestLoginRoute:
         username = make_unique_username()
         email = f'{uuid.uuid4()}@example.com'
         
-        # Create user
+        # Create user with verified email
         user = User(username=username, email=email, encryption_salt=b'salt_32_chars_long_enough_for_test')
         user.set_password('validpassword123')
+        user.email_verified = True  # Set email as verified for login tests
         db.session.add(user)
         db.session.commit()
         
@@ -180,9 +181,10 @@ class TestLoginRoute:
         username = make_unique_username()
         email = f'{uuid.uuid4()}@example.com'
         
-        # Create user with OTP enabled
+        # Create user with OTP enabled and verified email
         user = User(username=username, email=email, encryption_salt=b'salt_32_chars_long_enough_for_test')
         user.set_password('validpassword123')
+        user.email_verified = True  # Set email as verified for login tests
         user.otp_enabled = True
         user.otp_secret = make_unique_secret()
         db.session.add(user)
@@ -247,6 +249,26 @@ class TestLoginRoute:
         data = response.get_json()
         assert 'Invalid username or password' in data['message']
 
+    def test_login_unverified_email(self, client, app_context):
+        """Test login with unverified email address is rejected."""
+        username = make_unique_username()
+        email = f'{uuid.uuid4()}@example.com'
+        
+        # Create user with unverified email
+        user = User(username=username, email=email, encryption_salt=b'salt_32_chars_long_enough_for_test')
+        user.set_password('validpassword123')
+        user.email_verified = False  # Explicitly set as unverified
+        db.session.add(user)
+        db.session.commit()
+        
+        response = client.post('/api/auth/login',
+                             json={'username': username, 'password': 'validpassword123'})
+        
+        assert response.status_code == 403
+        data = response.get_json()
+        assert data['status'] == 'error'
+        assert 'verify your email' in data['message'].lower()
+
     @patch('app.auth.routes.send_email')
     @patch('app.auth.routes.render_template')
     @patch('app.auth.routes.get_config_value')
@@ -255,9 +277,10 @@ class TestLoginRoute:
         username = make_unique_username()
         email = f'{uuid.uuid4()}@example.com'
         
-        # Create user with email MFA enabled
+        # Create user with email MFA enabled and verified email
         user = User(username=username, email=email, encryption_salt=b'salt_32_chars_long_enough_for_test')
         user.set_password('validpassword123')
+        user.email_verified = True  # Set email as verified for login tests
         user.email_mfa_enabled = True
         db.session.add(user)
         db.session.commit()

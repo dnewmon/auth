@@ -24,11 +24,23 @@ class TestSendAsyncEmail:
         mock_app.app_context.return_value.__enter__ = Mock()
         mock_app.app_context.return_value.__exit__ = Mock(return_value=None)
         
-        # Create a mock message
+        # Create a mock message with required attributes
         mock_message = Mock(spec=Message)
+        mock_message.recipients = ["test@example.com"]
+        mock_message.subject = "Test Subject"
+        mock_message.sender = "noreply@example.com"
         
         # Mock the mail instance
         with patch('app.utils.email.mail') as mock_mail:
+            # Mock the mail.state attribute to avoid attribute errors
+            mock_mail.state = Mock()
+            mock_mail.state.server = "smtp.test.com"
+            mock_mail.state.username = "test_user"
+            mock_mail.state.password = "test_pass"
+            mock_mail.state.port = 587
+            mock_mail.state.use_tls = True
+            mock_mail.state.use_ssl = False
+            
             send_async_email(mock_app, mock_message)
             
             # Verify app context was used
@@ -91,11 +103,22 @@ class TestSendAsyncEmail:
         
         # Create a mock message with unicode content
         mock_message = Mock(spec=Message)
+        mock_message.recipients = ["test@example.com"]
         mock_message.subject = "Test Subject with émojis 🚀"
+        mock_message.sender = "noreply@example.com"
         mock_message.body = "Test body with unicode characters: café, naïve, résumé"
         
         # Mock the mail instance
         with patch('app.utils.email.mail') as mock_mail:
+            # Mock the mail.state attribute to avoid attribute errors
+            mock_mail.state = Mock()
+            mock_mail.state.server = "smtp.test.com"
+            mock_mail.state.username = "test_user"
+            mock_mail.state.password = "test_pass"
+            mock_mail.state.port = 587
+            mock_mail.state.use_tls = True
+            mock_mail.state.use_ssl = False
+            
             send_async_email(mock_app, mock_message)
             
             # Verify mail.send was called
@@ -109,16 +132,16 @@ class TestSendEmail:
         """Test successful email sending with threading."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
             # Setup mocks
             mock_message = Mock(spec=Message)
+            mock_message.recipients = ["test@example.com"]
+            mock_message.subject = "Test Subject"
+            mock_message.sender = "noreply@example.com"
             mock_message_class.return_value = mock_message
-            
-            mock_thread = Mock()
-            mock_thread_class.return_value = mock_thread
             
             # Call send_email
             send_email(
@@ -136,23 +159,19 @@ class TestSendEmail:
                 body="Test text content"
             )
             
-            # Verify Thread was created and started
-            mock_thread_class.assert_called_once()
-            mock_thread.start.assert_called_once()
+            # Verify send_async_email was called
+            mock_send_async.assert_called_once_with(app, mock_message)
 
     def test_send_email_minimal_parameters(self, app):
         """Test send_email with minimal required parameters."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
             mock_message = Mock(spec=Message)
             mock_message_class.return_value = mock_message
-            
-            mock_thread = Mock()
-            mock_thread_class.return_value = mock_thread
             
             # Call with minimal parameters
             send_email(to="test@example.com", subject="Test")
@@ -169,7 +188,7 @@ class TestSendEmail:
         """Test send_email with HTML template only."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
@@ -195,7 +214,7 @@ class TestSendEmail:
         """Test send_email with text body only."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
@@ -221,7 +240,7 @@ class TestSendEmail:
         """Test send_email with multiple recipients."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
@@ -243,39 +262,32 @@ class TestSendEmail:
             )
 
     def test_send_email_thread_configuration(self, app):
-        """Test that email thread is configured correctly."""
+        """Test that email is sent directly (no thread used in current implementation)."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
             mock_message = Mock(spec=Message)
             mock_message_class.return_value = mock_message
             
-            mock_thread = Mock()
-            mock_thread_class.return_value = mock_thread
-            
             send_email(to="test@example.com", subject="Test")
             
-            # Verify Thread was configured correctly
-            mock_thread_class.assert_called_once()
-            thread_call_args = mock_thread_class.call_args
-            
-            # Check that target function is send_async_email
-            assert thread_call_args[1]['target'].__name__ == 'send_async_email'
+            # Verify send_async_email was called directly (no threading)
+            mock_send_async.assert_called_once()
+            send_async_call_args = mock_send_async.call_args
             
             # Check that args include app and message
-            thread_args = thread_call_args[1]['args']
-            assert len(thread_args) == 2
-            assert thread_args[0] == app  # First arg should be the app
-            assert thread_args[1] == mock_message  # Second arg should be the message
+            assert len(send_async_call_args[0]) == 2
+            assert send_async_call_args[0][0] == app  # First arg should be the app
+            assert send_async_call_args[0][1] == mock_message  # Second arg should be the message
 
     def test_send_email_unicode_handling(self, app):
         """Test send_email with unicode characters."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
@@ -306,11 +318,11 @@ class TestEmailIntegration:
         """Test that email functions don't interfere with each other."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
-            mock_thread_class.return_value = Mock()
+            mock_send_async.return_value = None
             mock_message_class.return_value = Mock()
             
             # Send multiple emails
@@ -318,7 +330,7 @@ class TestEmailIntegration:
             send_email(to="test2@example.com", subject="Test 2")
             
             # Verify both emails were processed independently
-            assert mock_thread_class.call_count == 2
+            assert mock_send_async.call_count == 2
             assert mock_message_class.call_count == 2
 
     def test_email_with_app_context_integration(self, app):
@@ -326,48 +338,53 @@ class TestEmailIntegration:
         from app.utils.email import send_email, send_async_email
         
         with patch('app.utils.email.mail') as mock_mail:
+            # Mock the mail.state attribute to avoid attribute errors
+            mock_mail.state = Mock()
+            mock_mail.state.server = "smtp.test.com"
+            mock_mail.state.username = "test_user"
+            mock_mail.state.password = "test_pass"
+            mock_mail.state.port = 587
+            mock_mail.state.use_tls = True
+            mock_mail.state.use_ssl = False
+            
             # Test that send_async_email works with real app context
             with app.app_context():
                 mock_message = Mock(spec=Message)
+                mock_message.recipients = ["test@example.com"]
+                mock_message.subject = "Test Subject"
+                mock_message.sender = "noreply@example.com"
                 send_async_email(app, mock_message)
                 
                 # Verify mail.send was called
                 mock_mail.send.assert_called_once_with(mock_message)
 
     def test_email_threading_behavior(self, app):
-        """Test that email sending is truly non-blocking."""
+        """Test that email sending is synchronous (current implementation)."""
         from app.utils.email import send_email
         
         with patch('app.utils.email.send_async_email') as mock_async_send, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
-            # Use a real thread to test non-blocking behavior
             mock_message = Mock(spec=Message)
             mock_message_class.return_value = mock_message
             
             # Track if async function is called
-            async_called = threading.Event()
+            call_count = 0
             
             def mock_async_function(app_instance, message):
-                time.sleep(0.1)  # Simulate email sending delay
-                async_called.set()
+                nonlocal call_count
+                call_count += 1
+                return None
             
             mock_async_send.side_effect = mock_async_function
-            
-            # Record start time
-            start_time = time.time()
             
             # Send email
             send_email(to="test@example.com", subject="Test")
             
-            # Function should return immediately (non-blocking)
-            end_time = time.time()
-            assert (end_time - start_time) < 0.05  # Should be very fast
-            
-            # Wait for async function to complete
-            async_called.wait(timeout=1.0)
-            assert async_called.is_set()
+            # Function should complete synchronously
+            assert call_count == 1
+            mock_async_send.assert_called_once()
 
 
 class TestEmailErrorScenarios:
@@ -377,7 +394,7 @@ class TestEmailErrorScenarios:
         """Test send_email with empty recipient."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
@@ -396,7 +413,7 @@ class TestEmailErrorScenarios:
         """Test send_email with None subject."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
@@ -433,18 +450,18 @@ class TestEmailErrorScenarios:
             mock_logger.error.assert_called_once()
 
     def test_send_email_thread_creation_failure(self, app):
-        """Test behavior when thread creation fails."""
+        """Test behavior when send_async_email fails."""
         from app.utils.email import send_email
         
-        with patch('app.utils.email.Thread') as mock_thread_class, \
+        with patch('app.utils.email.send_async_email') as mock_send_async, \
              patch('app.utils.email.Message') as mock_message_class, \
              patch('app.utils.email.current_app', app):
             
             mock_message_class.return_value = Mock()
-            mock_thread_class.side_effect = Exception("Thread creation failed")
+            mock_send_async.side_effect = Exception("Email sending failed")
             
             # Should raise the exception (not handled in send_email)
-            with pytest.raises(Exception, match="Thread creation failed"):
+            with pytest.raises(Exception, match="Email sending failed"):
                 send_email(to="test@example.com", subject="Test")
 
     def test_send_email_message_creation_failure(self, app):

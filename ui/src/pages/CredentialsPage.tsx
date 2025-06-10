@@ -6,6 +6,7 @@ import { CredentialModal } from '../components/CredentialModal';
 import { MasterPasswordModal } from '../components/MasterPasswordModal';
 import { DeleteConfirmationModal } from '../components/DeleteConfirmationModal';
 import { ImportModal } from '../components/ImportModal';
+import { PasswordManagerImportModal } from '../components/PasswordManagerImportModal';
 import { Lock, Unlock, Eye, Pencil, Trash, Download, Upload } from 'react-bootstrap-icons';
 import { useAppContext } from '../AppContext';
 import { UtilsService, ImportCredentialsRequest } from '../services/UtilsService';
@@ -24,6 +25,7 @@ export default function CredentialsPage() {
     const [credentialToDelete, setCredentialToDelete] = useState<CredentialData | undefined>();
     const [masterPasswordModalMode, setMasterPasswordModalMode] = useState<'verify' | 'export'>('verify');
     const [showImportModal, setShowImportModal] = useState(false);
+    const [showPasswordManagerImportModal, setShowPasswordManagerImportModal] = useState(false);
 
     // Load credentials
     const [loadCredentials, credentials, loadState, loadError] = useApi(async () => {
@@ -210,6 +212,11 @@ export default function CredentialsPage() {
         }
     };
 
+    const handlePasswordManagerImportComplete = () => {
+        loadCredentials(); // Reload credentials after import
+        setShowPasswordManagerImportModal(false);
+    };
+
     // Handle search
     const filteredCredentials = credentials?.filter(
         (cred) =>
@@ -289,11 +296,19 @@ export default function CredentialsPage() {
                             </Button>
                         }
                     >
-                        <Button variant="outline-primary" onClick={() => setShowImportModal(true)} disabled={!verificationStatus.verified || importState === ApiState.Loading}>
+                        <Button variant="outline-primary" onClick={() => setShowImportModal(true)} disabled={!verificationStatus.verified || importState === ApiState.Loading} className="me-2">
                             <Upload className="me-1" />
-                            Import
+                            Import JSON/CSV
                         </Button>
                     </ApiSuspense>
+                    <Button 
+                        variant="outline-success" 
+                        onClick={() => setShowPasswordManagerImportModal(true)} 
+                        disabled={!verificationStatus.verified}
+                    >
+                        <Upload className="me-1" />
+                        Import from Password Manager
+                    </Button>
                 </Col>
             </Row>
 
@@ -485,6 +500,14 @@ export default function CredentialsPage() {
 
             {/* Import Modal */}
             <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleImport} />
+
+            {/* Password Manager Import Modal */}
+            <PasswordManagerImportModal 
+                show={showPasswordManagerImportModal} 
+                onHide={() => setShowPasswordManagerImportModal(false)} 
+                onImportComplete={handlePasswordManagerImportComplete}
+                masterPassword={masterPassword}
+            />
         </Container>
     );
 }

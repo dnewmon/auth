@@ -338,9 +338,10 @@ class TestListCredentials:
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 assert data['status'] == "success"
-                assert len(data['data']) == 1
+                credentials = data['data']['credentials']
+                assert len(credentials) == 1
                 
-                credential = data['data'][0]
+                credential = credentials[0]
                 assert credential['id'] == test_credential.id
                 assert credential['service_name'] == 'Test Service'
                 assert credential['username'] == 'testusername'
@@ -356,7 +357,8 @@ class TestListCredentials:
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 assert data['status'] == "success"
-                assert len(data['data']) == 0
+                credentials = data['data']['credentials']
+                assert len(credentials) == 0
 
     def test_list_credentials_unauthenticated(self, client, test_user):
         """Test listing credentials without authentication."""
@@ -405,8 +407,9 @@ class TestListCredentials:
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 assert data['status'] == "success"
-                assert len(data['data']) == 1
-                assert data['data'][0]['service_name'] == 'Test Service'
+                credentials = data['data']['credentials']
+                assert len(credentials) == 1
+                assert credentials[0]['service_name'] == 'Test Service'
 
 
 class TestGetCredential:
@@ -544,7 +547,7 @@ class TestUpdateCredential:
                 update_data = {
                     'service_name': 'Updated Service',
                     'username': 'updateduser',
-                    'password': 'updatedpassword',
+                    'password': 'UpdatedPassword84!',
                     'notes': 'Updated notes',
                     'category': 'personal',
                     'master_password': 'testpassword'
@@ -678,7 +681,9 @@ class TestDeleteCredential:
         """Test successful credential deletion."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
-                response = client.delete(f'/api/credentials/{test_credential.id}')
+                response = client.delete(f'/api/credentials/{test_credential.id}', 
+                                        json={'master_password': 'testpassword'}, 
+                                        content_type='application/json')
                 
                 assert response.status_code == 200
                 data = json.loads(response.data)
@@ -693,7 +698,9 @@ class TestDeleteCredential:
         """Test deletion of non-existent credential."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
-                response = client.delete('/api/credentials/99999')
+                response = client.delete('/api/credentials/99999', 
+                                        json={'master_password': 'testpassword'}, 
+                                        content_type='application/json')
                 
                 assert response.status_code == 404
 
@@ -731,7 +738,9 @@ class TestDeleteCredential:
         # Test that test_user cannot delete other user's credential
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
-                response = client.delete(f'/api/credentials/{other_credential.id}')
+                response = client.delete(f'/api/credentials/{other_credential.id}', 
+                                        json={'master_password': 'testpassword'}, 
+                                        content_type='application/json')
                 
                 assert response.status_code == 403
                 data = json.loads(response.data)
@@ -808,7 +817,7 @@ class TestIntegration:
                 credential_data = {
                     'service_name': 'Integration Test Service',
                     'username': 'testuser',
-                    'password': 'testpassword123',
+                    'password': 'TestPassword84!',
                     'master_password': 'testpassword'
                 }
                 
@@ -823,7 +832,7 @@ class TestIntegration:
                 # 3. List credentials
                 response = client.get('/api/credentials/')
                 assert response.status_code == 200
-                credentials = json.loads(response.data)['data']
+                credentials = json.loads(response.data)['data']['credentials']
                 assert len(credentials) >= 1  # At least our new credential
                 
                 # 4. Get credential
@@ -834,7 +843,7 @@ class TestIntegration:
                 )
                 assert response.status_code == 200
                 credential = json.loads(response.data)['data']
-                assert credential['password'] == 'testpassword123'
+                assert credential['password'] == 'TestPassword84!'
                 
                 # 5. Update credential
                 update_data = {
@@ -849,5 +858,7 @@ class TestIntegration:
                 assert response.status_code == 200
                 
                 # 6. Delete credential
-                response = client.delete(f'/api/credentials/{credential_id}')
+                response = client.delete(f'/api/credentials/{credential_id}', 
+                                       json={'master_password': 'testpassword'}, 
+                                       content_type='application/json')
                 assert response.status_code == 200
