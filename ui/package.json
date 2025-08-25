@@ -26,7 +26,7 @@
         "@types/react-dom": "^19.0.4",
         "@types/react-router-dom": "^5.3.3",
         "@vitejs/plugin-basic-ssl": "^2.1.0",
-        "@vitejs/plugin-react-swc": "^3.8.0",
+        "@vitejs/plugin-react-swc": "^4.0.1",
         "eslint": "^9.21.0",
         "eslint-plugin-react-hooks": "^5.1.0",
         "eslint-plugin-react-refresh": "^0.4.19",
