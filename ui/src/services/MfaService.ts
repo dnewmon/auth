@@ -81,4 +81,9 @@ export class MfaService {
         const response = await axios.post<MessageResponse>(`${this.BASE_URL}/mfa/email/disable/verify`, { verification_code });
         return response.data.data;
     }
+
+    static async resendEmailVerification(): Promise<MessageData> {
+        const response = await axios.post<MessageResponse>('/api/auth/resend-verification');
+        return response.data.data;
+    }
 }

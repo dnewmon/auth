@@ -10,7 +10,7 @@ import EmailSetup from '../components/mfa/EmailSetup';
 export default function MfaManagement() {
     const [showOtpSetup, setShowOtpSetup] = useState(false);
     const [showEmailSetup, setShowEmailSetup] = useState(false);
-    const [_showRecoveryKeyModal, setShowRecoveryKeyModal] = useState(false);
+    const [, setShowRecoveryKeyModal] = useState(false);
     const [showRegenerateKeysModal, setShowRegenerateKeysModal] = useState(false);
     const [showDirectRecoveryModal, setShowDirectRecoveryModal] = useState(false);
     const [masterPassword, setMasterPassword] = useState('');
@@ -51,6 +51,11 @@ export default function MfaManagement() {
         const response = await UtilsService.recoverWithKey(directRecoveryForm.email, directRecoveryForm.recoveryKey, directRecoveryForm.newPassword);
 
         setDirectRecoverySuccess(true);
+        return response;
+    });
+
+    const [resendVerification, resendVerificationResponse, resendVerificationState, resendVerificationError] = useApi(async () => {
+        const response = await MfaService.resendEmailVerification();
         return response;
     });
 
@@ -97,7 +102,7 @@ export default function MfaManagement() {
 
             <h2 className="mb-3">Two-Factor Authentication</h2>
 
-            <ApiErrorFallback api_error={mfaStatusError} />
+            <ApiErrorFallback api_error={mfaStatusError || resendVerificationError} />
 
             <ApiSuspense api_states={[mfaStatusState]} suspense={<Spinner />}>
                 <Card className="mb-4">
@@ -134,6 +139,27 @@ export default function MfaManagement() {
                                 <i className="bi bi-exclamation-triangle-fill me-1"></i>
                                 Not Verified
                             </span>
+                        )}
+                        
+                        {!mfaStatus?.email_verified && (
+                            <div className="mt-2">
+                                <ApiSuspense api_states={[resendVerificationState]} suspense={<Button variant="outline-secondary" size="sm" disabled>Sending...</Button>}>
+                                    <Button 
+                                        variant="outline-secondary" 
+                                        size="sm" 
+                                        onClick={resendVerification}
+                                        className="me-2"
+                                    >
+                                        Resend Verification Email
+                                    </Button>
+                                </ApiSuspense>
+                                {resendVerificationResponse && (
+                                    <small className="text-success">
+                                        <i className="bi bi-check-circle me-1"></i>
+                                        Verification email sent!
+                                    </small>
+                                )}
+                            </div>
                         )}
                     </div>
 
