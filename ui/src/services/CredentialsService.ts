@@ -65,12 +65,17 @@ export interface DeleteCredentialData {
     message: string;
 }
 
+export interface PasswordData {
+    password: string;
+}
+
 // Response interfaces
 export interface CredentialResponse extends SuccessResponse<CredentialData> {}
 export interface CredentialsResponse extends SuccessResponse<CredentialListData[]> {}
 export interface MasterVerificationResponse extends SuccessResponse<MasterVerificationData> {}
 export interface VerifyMasterResponse extends SuccessResponse<string> {}
 export interface DeleteCredentialResponse extends SuccessResponse<string> {}
+export interface PasswordResponse extends SuccessResponse<PasswordData> {}
 
 export class CredentialsService {
     private static readonly BASE_URL = '/api/credentials';
@@ -109,5 +114,10 @@ export class CredentialsService {
     static async delete(id: number): Promise<string> {
         const response = await axios.delete<DeleteCredentialResponse>(`${this.BASE_URL}/${id}`);
         return response.data.data;
+    }
+
+    static async getPassword(id: number, master_password: string): Promise<string> {
+        const response = await axios.post<PasswordResponse>(`${this.BASE_URL}/${id}/password`, { master_password });
+        return response.data.data.password;
     }
 }

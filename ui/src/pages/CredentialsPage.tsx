@@ -1,29 +1,37 @@
 import React, { useState } from 'react';
 import { Container, Table, Button, Form, Row, Col, Pagination, Spinner } from 'react-bootstrap';
-import { CredentialsService, CredentialData, CredentialRequest, MasterVerificationData } from '../services/CredentialsService';
-import { useApi, ApiErrorFallback, ApiSuspense, useDebouncedEffect, ApiState, useTimer } from '../react-utilities';
-import { CredentialModal } from '../components/CredentialModal';
-import { MasterPasswordModal } from '../components/MasterPasswordModal';
+import { useNavigate } from 'react-router-dom';
+import { CredentialsService, CredentialData } from '../services/CredentialsService';
+import { useApi, ApiErrorFallback, ApiSuspense, useDebouncedEffect, ApiState, useSessionStorage } from '../react-utilities';
 import { DeleteConfirmationModal } from '../components/DeleteConfirmationModal';
 import { ImportModal } from '../components/ImportModal';
-import { Lock, Unlock, Eye, Pencil, Trash, Download, Upload } from 'react-bootstrap-icons';
+import { MasterPasswordRequired } from '../components/MasterPasswordRequired';
+import { Eye, Pencil, Trash, Download, Upload, X, Clipboard, ArrowUpRight } from 'react-bootstrap-icons';
 import { useAppContext } from '../AppContext';
 import { UtilsService, ImportCredentialsRequest } from '../services/UtilsService';
+import { copyToClipboard } from '../helpers';
 
 const ITEMS_PER_PAGE = 15;
 
 export default function CredentialsPage() {
-    const { masterPassword, setMasterPassword, verificationStatus, setVerificationStatus } = useAppContext();
-    const [searchTerm, setSearchTerm] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
-    const [showModal, setShowModal] = useState(false);
-    const [modalMode, setModalMode] = useState<'create' | 'view' | 'edit'>('create');
-    const [selectedCredential, setSelectedCredential] = useState<CredentialData | undefined>();
-    const [showMasterPasswordModal, setShowMasterPasswordModal] = useState(false);
+    const navigate = useNavigate();
+    const { masterPassword, verificationStatus } = useAppContext();
+    const [sessionSearchTerm, setSessionSearchTerm] = useSessionStorage('search-term', '');
+    const [sessionCurrentPage, setSessionCurrentPage] = useSessionStorage('current-page', 1);
+    const [searchTerm, setSearchTerm] = useState(sessionSearchTerm);
+    const [currentPage, setCurrentPage] = useState(sessionCurrentPage);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [credentialToDelete, setCredentialToDelete] = useState<CredentialData | undefined>();
-    const [masterPasswordModalMode, setMasterPasswordModalMode] = useState<'verify' | 'export'>('verify');
     const [showImportModal, setShowImportModal] = useState(false);
+
+    const updateSessionSearchTerm = (term: string) => {
+        setSessionSearchTerm(term);
+        setSearchTerm(term);
+    };
+    const updateSessionCurrentPage = (page: number) => {
+        setSessionCurrentPage(page);
+        setCurrentPage(page);
+    };
 
     // Load credentials
     const [loadCredentials, credentials, loadState, loadError] = useApi(async () => {
@@ -31,49 +39,10 @@ export default function CredentialsPage() {
         return data;
     });
 
-    // Check master password verification status
-    const [checkVerificationStatus] = useApi(async () => {
-        const status = await CredentialsService.getMasterVerificationStatus();
-        setVerificationStatus({
-            ...status,
-            verified: status.verified && masterPassword.length > 0,
-        });
-
-        return status;
-    });
-
-    // Verify master password
-    const [verifyMasterPassword] = useApi(async (password: string) => {
-        await CredentialsService.verifyMasterPassword(password);
-        setMasterPassword(password); // Store the master password
-        checkVerificationStatus();
-    });
-
-    // Create credential
-    const [handleCreate, , createState, createError] = useApi(async (data: CredentialRequest) => {
-        await CredentialsService.create(data);
-        loadCredentials(); // Reload the list
-    });
-
-    // Update credential
-    const [handleUpdate, , updateState, updateError] = useApi(async (data: CredentialRequest) => {
-        if (selectedCredential) {
-            await CredentialsService.update(selectedCredential.id, data);
-            loadCredentials(); // Reload the list
-        }
-    });
-
     // Delete credential
     const [handleDelete, , deleteState, deleteError] = useApi(async (id: number) => {
         await CredentialsService.delete(id);
         loadCredentials(); // Reload the list
-    });
-
-    // Get specific credential
-    const [getCredential] = useApi(async (id: number) => {
-        const credential = await CredentialsService.getById(id, masterPassword);
-        setSelectedCredential(credential);
-        setShowModal(true);
     });
 
     // Initial load and search debounce
@@ -86,36 +55,6 @@ export default function CredentialsPage() {
         [loadState],
         300
     );
-
-    // Check verification status periodically
-    const [trigger_verification_timer, cancel_verification_timer] = useTimer();
-
-    useDebouncedEffect(() => {
-        // Initial check of verification status
-        checkVerificationStatus();
-
-        // Set up timer based on expiration
-        const setupExpirationTimer = (status: MasterVerificationData) => {
-            if (status.expires_at) {
-                const expiresAt = new Date(status.expires_at).getTime();
-                const now = new Date().getTime();
-                const timeUntilExpiry = Math.max(0, expiresAt - now);
-
-                if (timeUntilExpiry > 0) {
-                    trigger_verification_timer(() => {
-                        checkVerificationStatus();
-                    }, timeUntilExpiry);
-                }
-            }
-        };
-
-        // Update timer whenever verification status changes
-        if (verificationStatus.expires_at) {
-            setupExpirationTimer(verificationStatus);
-        }
-
-        return cancel_verification_timer;
-    }, [verificationStatus.expires_at]);
 
     // Export credentials
     const [handleExport, , exportState, exportError] = useApi(async (exportPassword: string) => {
@@ -141,82 +80,38 @@ export default function CredentialsPage() {
         loadCredentials(); // Reload the list
     });
 
+    // Copy password to clipboard
+    const [handleCopyPassword, , copyState, copyError] = useApi(async (credentialId: number) => {
+        const password = await CredentialsService.getPassword(credentialId, masterPassword);
+        await copyToClipboard(password);
+    });
+
     const handleSearchTermChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSearchTerm(e.target.value);
-        setCurrentPage(1);
+        updateSessionSearchTerm(e.target.value);
+        updateSessionCurrentPage(1);
     };
 
-    // Modal handlers
+    const handleClearSearch = () => {
+        updateSessionSearchTerm('');
+        updateSessionCurrentPage(1);
+    };
+
+    // Navigation handlers
     const handleOpenCreate = () => {
-        if (!verificationStatus.verified) {
-            setMasterPasswordModalMode('verify');
-            setShowMasterPasswordModal(true);
-            return;
-        }
-        setModalMode('create');
-        setSelectedCredential(undefined);
-        setShowModal(true);
+        navigate('/credentials/new');
     };
 
     const handleOpenView = (credential: CredentialData) => {
-        if (!verificationStatus.verified) {
-            setMasterPasswordModalMode('verify');
-            setShowMasterPasswordModal(true);
-            return;
-        }
-        setModalMode('view');
-        getCredential(credential.id);
+        navigate(`/credentials/${credential.id}`);
     };
 
     const handleOpenEdit = (credential: CredentialData) => {
-        if (!verificationStatus.verified) {
-            setMasterPasswordModalMode('verify');
-            setShowMasterPasswordModal(true);
-            return;
-        }
-        setModalMode('edit');
-        getCredential(credential.id);
-    };
-
-    const handleCloseModal = () => {
-        setShowModal(false);
-        setSelectedCredential(undefined);
-    };
-
-    const handleSave = async (data: Omit<CredentialRequest, 'master_password'>) => {
-        if (modalMode === 'create') {
-            await handleCreate({
-                ...data,
-                master_password: masterPassword,
-            });
-        } else if (modalMode === 'edit' && selectedCredential) {
-            await handleUpdate({
-                ...data,
-                master_password: masterPassword,
-            });
-        }
-    };
-
-    const handleExportClick = () => {
-        setMasterPasswordModalMode('export');
-        setShowMasterPasswordModal(true);
-    };
-
-    const handleMasterPasswordSubmit = async (password: string) => {
-        if (masterPasswordModalMode === 'verify') {
-            await verifyMasterPassword(password);
-        } else {
-            await handleExport(password);
-        }
+        navigate(`/credentials/${credential.id}/edit`);
     };
 
     // Handle search
-    const filteredCredentials = credentials?.filter(
-        (cred) =>
-            cred.service_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (cred.service_url && cred.service_url.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (cred.category && cred.category.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const searchTermLower = searchTerm.toLowerCase();
+    const filteredCredentials = credentials?.filter((cred) => JSON.stringify(cred).toLocaleLowerCase().includes(searchTermLower));
 
     // Handle pagination
     const totalPages = Math.ceil((filteredCredentials?.length ?? 0) / ITEMS_PER_PAGE);
@@ -238,34 +133,13 @@ export default function CredentialsPage() {
 
     return (
         <Container>
-            <ApiErrorFallback api_error={loadError || deleteError || createError || updateError || exportError || importError} />
+            <ApiErrorFallback api_error={loadError || deleteError || exportError || importError || copyError} />
 
             <Row className="mb-4 align-items-center">
                 <Col>
-                    <h2 className="mb-0">My Credentials</h2>
+                    <h2 className="mb-0 text-nowrap">My Credentials</h2>
                 </Col>
-                <Col xs="auto">
-                    <ApiSuspense
-                        api_states={[loadState]}
-                        suspense={
-                            <Button variant="warning" disabled>
-                                <Spinner animation="border" size="sm" className="me-2" />
-                                Loading...
-                            </Button>
-                        }
-                    >
-                        <Button
-                            variant={verificationStatus.verified ? 'success' : 'warning'}
-                            className="me-2"
-                            onClick={() => {
-                                setMasterPasswordModalMode('verify');
-                                setShowMasterPasswordModal(true);
-                            }}
-                        >
-                            {verificationStatus.verified ? <Unlock className="me-1" /> : <Lock className="me-1" />}
-                            {verificationStatus.verified ? 'Unlocked' : 'Locked'}
-                        </Button>
-                    </ApiSuspense>
+                <Col xs="auto" className="d-none d-xl-flex">
                     <ApiSuspense
                         api_states={[loadState, exportState]}
                         suspense={
@@ -275,7 +149,15 @@ export default function CredentialsPage() {
                             </Button>
                         }
                     >
-                        <Button variant="outline-primary" onClick={handleExportClick} disabled={!verificationStatus.verified || exportState === ApiState.Loading} className="me-2">
+                        <Button
+                            variant="outline-primary"
+                            onClick={() => {
+                                const exportPassword = prompt('Enter export password:');
+                                if (exportPassword) handleExport(exportPassword);
+                            }}
+                            disabled={!verificationStatus.verified || exportState === ApiState.Loading}
+                            className="me-2"
+                        >
                             <Download className="me-1" />
                             Export
                         </Button>
@@ -297,178 +179,169 @@ export default function CredentialsPage() {
                 </Col>
             </Row>
 
-            {/* Search Bar */}
-            <Row className="mb-4">
-                <Col md={6}>
-                    <Form.Control type="text" placeholder="Search credentials..." value={searchTerm} onChange={handleSearchTermChange} />
-                </Col>
-                <Col md={6} className="text-end">
-                    <ApiSuspense
-                        api_states={[loadState]}
-                        suspense={
-                            <Button variant="primary" disabled>
-                                <Spinner animation="border" size="sm" className="me-2" />
-                                Loading...
+            <MasterPasswordRequired>
+                {/* Search Bar */}
+                <Row className="mb-4">
+                    <Col md={12} className="d-flex gap-2 justify-content-between align-items-center">
+                        <div className="position-relative flex-grow-1">
+                            <Form.Control type="text" placeholder="Search credentials..." value={searchTerm} onChange={handleSearchTermChange} />
+                            {searchTerm && (
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    onClick={handleClearSearch}
+                                    className="position-absolute end-0 top-50 translate-middle-y pe-2 text-muted"
+                                    style={{ border: 'none', background: 'none' }}
+                                >
+                                    <X size={16} />
+                                </Button>
+                            )}
+                        </div>
+                        <ApiSuspense
+                            api_states={[loadState]}
+                            suspense={
+                                <Button variant="primary" disabled>
+                                    <Spinner animation="border" size="sm" className="me-2" />
+                                    Loading...
+                                </Button>
+                            }
+                        >
+                            <Button variant="outline-primary" onClick={handleOpenCreate} className="text-nowrap">
+                                New Credential
                             </Button>
-                        }
-                    >
-                        <Button variant="primary" onClick={handleOpenCreate}>
-                            Add New Credential
-                        </Button>
-                    </ApiSuspense>
-                </Col>
-            </Row>
+                        </ApiSuspense>
+                    </Col>
+                </Row>
 
-            <ApiSuspense
-                api_states={[loadState]}
-                suspense={
-                    <div className="text-center mt-4">
-                        <Spinner animation="border" />
-                        <p className="mt-2">Loading credentials...</p>
-                    </div>
-                }
-            >
-                {/* Credentials Table */}
-                <div className="table-responsive">
-                    <Table striped hover>
-                        <thead>
-                            <tr>
-                                <th className="d-xl-table-cell d-none">Category</th>
-                                <th>Service</th>
-                                <th className="d-xl-table-cell d-none">URL</th>
-                                <th className="d-md-table-cell d-none">Username</th>
-                                <th className="text-end">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {paginatedCredentials?.map((cred) => (
-                                <tr key={cred.id}>
-                                    <td className="d-xl-table-cell d-none">{cred.category || '-'}</td>
-                                    <td>{cred.service_name}</td>
-                                    <td className="d-xl-table-cell d-none text-truncate">
-                                        {cred.service_url && (
-                                            <a href={cred.service_url} target="_blank" rel="noopener noreferrer">
-                                                {cred.service_url}
-                                            </a>
-                                        )}
-                                    </td>
-                                    <td className="d-md-table-cell d-none">{cred.username}</td>
-                                    <td className="text-nowrap text-end">
-                                        <ApiSuspense
-                                            api_states={[loadState]}
-                                            suspense={
-                                                <Button variant="outline-info" size="sm" className="me-2" disabled>
-                                                    <Spinner animation="border" size="sm" />
-                                                </Button>
-                                            }
-                                        >
-                                            <Button
-                                                variant="outline-info"
-                                                size="sm"
-                                                className="me-2"
-                                                onClick={() => handleOpenView(cred)}
-                                                title="View"
-                                                disabled={!verificationStatus.verified}
-                                            >
-                                                <Eye />
-                                            </Button>
-                                        </ApiSuspense>
-                                        <ApiSuspense
-                                            api_states={[loadState]}
-                                            suspense={
-                                                <Button variant="outline-primary" size="sm" className="me-2" disabled>
-                                                    <Spinner animation="border" size="sm" />
-                                                </Button>
-                                            }
-                                        >
-                                            <Button
-                                                variant="outline-primary"
-                                                size="sm"
-                                                className="me-2"
-                                                onClick={() => handleOpenEdit(cred)}
-                                                title="Edit"
-                                                disabled={!verificationStatus.verified}
-                                            >
-                                                <Pencil />
-                                            </Button>
-                                        </ApiSuspense>
-                                        <ApiSuspense
-                                            api_states={[loadState, deleteState]}
-                                            suspense={
-                                                <Button variant="outline-danger" size="sm" disabled>
-                                                    <Spinner animation="border" size="sm" />
-                                                </Button>
-                                            }
-                                        >
-                                            <Button
-                                                variant="outline-danger"
-                                                size="sm"
-                                                onClick={() => handleDeleteClick(cred)}
-                                                disabled={!verificationStatus.verified || deleteState === ApiState.Loading}
-                                                title="Delete"
-                                            >
-                                                <Trash />
-                                            </Button>
-                                        </ApiSuspense>
-                                    </td>
+                <ApiSuspense
+                    api_states={[loadState]}
+                    suspense={
+                        <div className="text-center mt-4">
+                            <Spinner animation="border" />
+                            <p className="mt-2">Loading credentials...</p>
+                        </div>
+                    }
+                >
+                    {/* Credentials Table */}
+                    <div className="table-responsive">
+                        <Table striped hover>
+                            <thead>
+                                <tr>
+                                    <th className="">Category</th>
+                                    <th>Service</th>
+                                    <th className="d-lg-table-cell d-none">Username</th>
+                                    <th className="text-end">Actions</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </Table>
-                </div>
-                {/* Pagination */}
-                {totalPages > 1 && (
-                    <div className="d-flex justify-content-center mt-4">
-                        <Pagination>
-                            <Pagination.First onClick={() => setCurrentPage(1)} disabled={currentPage === 1} />
-                            <Pagination.Prev onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} />
-
-                            {[...Array(totalPages)].map((_, idx) => {
-                                // Show current page and up to 3 pages before/after
-                                if (
-                                    idx + 1 === currentPage || // Current page
-                                    (idx + 1 >= currentPage - 3 && idx + 1 <= currentPage + 3) // 3 pages before/after
-                                ) {
-                                    return (
-                                        <Pagination.Item key={idx + 1} active={currentPage === idx + 1} onClick={() => setCurrentPage(idx + 1)}>
-                                            {idx + 1}
-                                        </Pagination.Item>
-                                    );
-                                }
-                                return null;
-                            })}
-
-                            <Pagination.Next onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} />
-                            <Pagination.Last onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} />
-                        </Pagination>
+                            </thead>
+                            <tbody>
+                                {paginatedCredentials?.map((cred) => (
+                                    <tr key={cred.id}>
+                                        <td className="">{cred.category || '-'}</td>
+                                        <td>{cred.service_name}</td>
+                                        <td className="d-lg-table-cell d-none">{cred.username}</td>
+                                        <td className="text-nowrap text-end">
+                                            {cred.service_url && (
+                                                <Button variant="outline-primary" size="sm" className="me-1" href={cred.service_url} target="_blank" rel="noopener noreferrer">
+                                                    <ArrowUpRight />
+                                                </Button>
+                                            )}
+                                            <ApiSuspense
+                                                api_states={[copyState]}
+                                                suspense={
+                                                    <Button variant="outline-success" size="sm" className="me-1" disabled>
+                                                        <Spinner animation="border" size="sm" />
+                                                    </Button>
+                                                }
+                                            >
+                                                <Button
+                                                    variant="outline-success"
+                                                    size="sm"
+                                                    className="me-1"
+                                                    onClick={() => handleCopyPassword(cred.id)}
+                                                    title="Copy Password"
+                                                    disabled={!verificationStatus.verified || copyState === ApiState.Loading}
+                                                >
+                                                    <Clipboard />
+                                                </Button>
+                                            </ApiSuspense>
+                                            <ApiSuspense
+                                                api_states={[loadState]}
+                                                suspense={
+                                                    <Button variant="outline-info" size="sm" className="me-1 d-none d-lg-inline" disabled>
+                                                        <Spinner animation="border" size="sm" />
+                                                    </Button>
+                                                }
+                                            >
+                                                <Button variant="outline-info" size="sm" className="me-1 d-none d-lg-inline" onClick={() => handleOpenView(cred)} title="View">
+                                                    <Eye />
+                                                </Button>
+                                            </ApiSuspense>
+                                            <ApiSuspense
+                                                api_states={[loadState]}
+                                                suspense={
+                                                    <Button variant="outline-primary" size="sm" className="me-1" disabled>
+                                                        <Spinner animation="border" size="sm" />
+                                                    </Button>
+                                                }
+                                            >
+                                                <Button variant="outline-primary" size="sm" className="me-1" onClick={() => handleOpenEdit(cred)} title="Edit">
+                                                    <Pencil />
+                                                </Button>
+                                            </ApiSuspense>
+                                            <ApiSuspense
+                                                api_states={[loadState, deleteState]}
+                                                suspense={
+                                                    <Button variant="outline-danger" size="sm" disabled className="d-none d-lg-inline">
+                                                        <Spinner animation="border" size="sm" />
+                                                    </Button>
+                                                }
+                                            >
+                                                <Button
+                                                    variant="outline-danger"
+                                                    size="sm"
+                                                    onClick={() => handleDeleteClick(cred)}
+                                                    disabled={deleteState === ApiState.Loading}
+                                                    title="Delete"
+                                                    className="d-none d-lg-inline"
+                                                >
+                                                    <Trash />
+                                                </Button>
+                                            </ApiSuspense>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </Table>
                     </div>
-                )}
-            </ApiSuspense>
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                        <div className="d-flex justify-content-center mt-4">
+                            <Pagination>
+                                <Pagination.First onClick={() => updateSessionCurrentPage(1)} disabled={currentPage === 1} />
+                                <Pagination.Prev onClick={() => updateSessionCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} />
 
-            {/* Credential Modal */}
-            {showModal && (
-                <CredentialModal
-                    show={showModal}
-                    onHide={handleCloseModal}
-                    mode={modalMode}
-                    credential={selectedCredential}
-                    onSave={handleSave}
-                    createState={createState}
-                    updateState={updateState}
-                    createError={createError}
-                    updateError={updateError}
-                />
-            )}
+                                {[...Array(totalPages)].map((_, idx) => {
+                                    // Show current page and up to 3 pages before/after
+                                    if (
+                                        idx + 1 === currentPage || // Current page
+                                        (idx + 1 >= currentPage - 3 && idx + 1 <= currentPage + 3) // 3 pages before/after
+                                    ) {
+                                        return (
+                                            <Pagination.Item key={idx + 1} active={currentPage === idx + 1} onClick={() => updateSessionCurrentPage(idx + 1)}>
+                                                {idx + 1}
+                                            </Pagination.Item>
+                                        );
+                                    }
+                                    return null;
+                                })}
 
-            {/* Master Password Modal */}
-            {showMasterPasswordModal && (
-                <MasterPasswordModal
-                    show={showMasterPasswordModal}
-                    onHide={() => setShowMasterPasswordModal(false)}
-                    onVerify={handleMasterPasswordSubmit}
-                    mode={masterPasswordModalMode}
-                />
-            )}
+                                <Pagination.Next onClick={() => updateSessionCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} />
+                                <Pagination.Last onClick={() => updateSessionCurrentPage(totalPages)} disabled={currentPage === totalPages} />
+                            </Pagination>
+                        </div>
+                    )}
+                </ApiSuspense>
+            </MasterPasswordRequired>
 
             {/* Delete Confirmation Modal */}
             {credentialToDelete && (

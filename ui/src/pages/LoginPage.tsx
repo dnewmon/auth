@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Button, Spinner } from 'react-bootstrap';
 import { useAppContext } from '../AppContext';
 import { AuthService } from '../services/AuthService';
+import { CredentialsService } from '../services/CredentialsService';
 import { ApiErrorFallback, ApiSuspense, useApi } from '../react-utilities';
 
 interface LoginForm {
@@ -12,7 +13,7 @@ interface LoginForm {
 
 export default function LoginPage() {
     const navigate = useNavigate();
-    const { setUsername } = useAppContext();
+    const { setUsername, setMasterPassword } = useAppContext();
     const [formData, setFormData] = useState<LoginForm>({
         username: '',
         password: '',
@@ -22,6 +23,16 @@ export default function LoginPage() {
     const [emailMfaCode, setEmailMfaCode] = useState('');
     const [showEmailMfaForm, setShowEmailMfaForm] = useState(false);
     const [emailFallbackAvailable, setEmailFallbackAvailable] = useState(false);
+
+    // Helper function to refresh master verification status after login
+    const refreshMasterVerificationStatus = async () => {
+        try {
+            await CredentialsService.getMasterVerificationStatus();
+            console.log('Master verification status refreshed');
+        } catch (error) {
+            console.warn('Failed to refresh master verification status:', error);
+        }
+    };
 
     const [handleLogin, , loginState, loginError] = useApi(async () => {
         const response = await AuthService.login(formData);
@@ -42,6 +53,8 @@ export default function LoginPage() {
 
         if (go_home) {
             setUsername(formData.username);
+            setMasterPassword(formData.password);
+            await refreshMasterVerificationStatus();
             navigate('/');
         }
     });
@@ -49,6 +62,7 @@ export default function LoginPage() {
     const [handleOtpVerify, , otpState, otpError] = useApi(async () => {
         const response = await AuthService.verifyOtp({ otp_token: otpToken });
         setUsername(formData.username);
+        await refreshMasterVerificationStatus();
         navigate('/');
         return response;
     });
@@ -56,6 +70,7 @@ export default function LoginPage() {
     const [handleEmailMfaVerify, , emailMfaState, emailMfaError] = useApi(async () => {
         const response = await AuthService.verifyEmailMfa({ verification_code: emailMfaCode });
         setUsername(formData.username);
+        await refreshMasterVerificationStatus();
         navigate('/');
         return response;
     });
@@ -130,11 +145,7 @@ export default function LoginPage() {
                                                 Verify
                                             </Button>
                                             {emailFallbackAvailable && (
-                                                <Button
-                                                    variant="secondary"
-                                                    className="w-100 mt-2"
-                                                    onClick={handleSwitchToEmail}
-                                                >
+                                                <Button variant="secondary" className="w-100 mt-2" onClick={handleSwitchToEmail}>
                                                     Use Email Verification Instead
                                                 </Button>
                                             )}
@@ -154,9 +165,7 @@ export default function LoginPage() {
                                 ) : (
                                     <div>
                                         <h3 className="text-center mb-4">Enter Email Verification Code</h3>
-                                        <p className="text-center text-muted mb-4">
-                                            We've sent a 6-digit verification code to your email address. Please check your inbox.
-                                        </p>
+                                        <p className="text-center text-muted mb-4">We've sent a 6-digit verification code to your email address. Please check your inbox.</p>
                                         <Form
                                             onSubmit={(e) => {
                                                 e.preventDefault();

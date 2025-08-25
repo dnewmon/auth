@@ -1,6 +1,9 @@
 import { NavigateFunction, RouteObject, useNavigate, useParams } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import CredentialsPage from './pages/CredentialsPage';
+import CredentialCreatePage from './pages/CredentialCreatePage';
+import CredentialEditPage from './pages/CredentialEditPage';
+import CredentialViewPage from './pages/CredentialViewPage';
 import MfaManagement from './pages/MfaManagement';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -29,6 +32,18 @@ export const site_routes: RouteObject[] = [
             {
                 path: 'credentials',
                 element: <CredentialsPage />,
+            },
+            {
+                path: 'credentials/new',
+                element: <CredentialCreatePage />,
+            },
+            {
+                path: 'credentials/:id',
+                element: <CredentialViewPage />,
+            },
+            {
+                path: 'credentials/:id/edit',
+                element: <CredentialEditPage />,
             },
             {
                 path: 'account',
@@ -65,6 +80,18 @@ export class SiteNavigator {
 
     go_credentials() {
         this.navigate(`/credentials`);
+    }
+
+    go_credential_create() {
+        this.navigate(`/credentials/new`);
+    }
+
+    go_credential_view(id: number) {
+        this.navigate(`/credentials/${id}`);
+    }
+
+    go_credential_edit(id: number) {
+        this.navigate(`/credentials/${id}/edit`);
     }
 
     get_params() {

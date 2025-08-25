@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 import { MasterVerificationData } from './services/CredentialsService';
+import { useSessionStorage } from './react-utilities';
 
 interface AppContextType {
     username: string | null;
@@ -27,12 +28,21 @@ export const useAppContext = () => useContext(AppContext);
 
 export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [username, setUsername] = useState<string | null>(null);
-    const [masterPassword, setMasterPassword] = useState<string>('');
+    const [masterPassword, setMasterPassword] = useSessionStorage<string>('master-password', '');
+
     const [verificationStatus, setVerificationStatus] = useState<MasterVerificationData>({
         verified: false,
         expires_at: null,
         time_remaining: 0,
     });
+
+    const updateVerificationStatus = (status: MasterVerificationData) => {
+        setVerificationStatus(status);
+
+        if (!status.verified) {
+            setMasterPassword('');
+        }
+    };
 
     return (
         <AppContext.Provider
@@ -42,7 +52,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 masterPassword,
                 setMasterPassword,
                 verificationStatus,
-                setVerificationStatus,
+                setVerificationStatus: updateVerificationStatus,
             }}
         >
             {children}

@@ -3,6 +3,7 @@ from . import auth_bp
 from ..models import db, User, EmailVerificationToken, MfaVerificationCode
 from ..utils.responses import success_response, error_response
 from ..utils.email import send_email
+from ..utils.master_verification import MasterVerificationManager
 from sqlalchemy.exc import IntegrityError
 from flask_login import login_user, logout_user, login_required, current_user
 import logging
@@ -12,8 +13,26 @@ from .. import limiter
 from ..models.config import get_config_value
 
 
+def _complete_user_login(user, password):
+    """Complete user login and initialize master verification."""
+    login_user(user)
+    # Set session version
+    session["session_version"] = user.session_version
+    session.modified = True
+
+    # Update last login timestamp
+    user.update_last_login()
+
+    # Initialize master verification with the login password
+    try:
+        MasterVerificationManager.verify_and_store(password)
+    except ValueError:
+        # This shouldn't happen as password was already verified, but log it
+        current_app.logger.warning(f"Failed to initialize master verification for user {user.id}")
+
+
 @auth_bp.route("/register", methods=["POST"])
-@limiter.limit("5 per hour")
+@limiter.limit("10 per minute")
 def register():
     data = request.get_json()
     if not data:
@@ -61,11 +80,9 @@ def register():
         # Send welcome email with verification link
         try:
             verification_token = EmailVerificationToken.create_for_user(new_user.id)
-            verification_url = url_for('auth.verify_email', token=verification_token.token, _external=True)
-            
-            email_html = render_template('email/welcome_verification.html', 
-                                         user=new_user, 
-                                         verification_url=verification_url)
+            verification_url = url_for("auth.verify_email", token=verification_token.token, _external=True)
+
+            email_html = render_template("email/welcome_verification.html", user=new_user, verification_url=verification_url)
             send_email(new_user.email, "Welcome! Please Verify Your Email", email_html)
             current_app.logger.info(f"Sent welcome verification email to {new_user.email}")
         except Exception as e:
@@ -81,7 +98,7 @@ def register():
             "email_verified": new_user.email_verified,
             "recovery_keys": recovery_keys,
             "recovery_message": "IMPORTANT: Please save these recovery keys in a secure location. They will be needed to recover your account if you forget your password. They will NOT be shown again.",
-            "verification_message": "A verification email has been sent to your email address. Please verify your email to enable all features."
+            "verification_message": "A verification email has been sent to your email address. Please verify your email to enable all features.",
         }
         return success_response(user_data, "User registered successfully", 201)  # 201 Created
     except IntegrityError as e:
@@ -112,8 +129,9 @@ def login():
     if user and user.check_password(password):  # Uses Argon2 check
         # Check if OTP is enabled (prioritize OTP as more secure)
         if user.otp_enabled:
-            # Store user ID in session to indicate first factor success
+            # Store user ID and password in session to indicate first factor success
             session[get_config_value("SESSION_KEY_OTP_USER_ID")] = user.id
+            session["otp_user_password"] = password  # Store password temporarily for master verification
             session.modified = True
             current_app.logger.info(f"User '{username}' passed first factor, OTP required.")
             # Include email MFA availability for fallback
@@ -124,33 +142,26 @@ def login():
         elif user.email_mfa_enabled:
             # Email MFA is enabled, send verification code
             try:
-                verification_code = MfaVerificationCode.create_for_user(user.id, 'login')
-                
+                verification_code = MfaVerificationCode.create_for_user(user.id, "login")
+
                 # Send verification code email
-                email_html = render_template('email/mfa_login_code.html', 
-                                             user=user, 
-                                             verification_code=verification_code.code)
+                email_html = render_template("email/mfa_login_code.html", user=user, verification_code=verification_code.code)
                 send_email(user.email, "Login Verification Code", email_html)
-                
-                # Store user ID in session to indicate first factor success
+
+                # Store user ID and password in session to indicate first factor success
                 session[get_config_value("SESSION_KEY_EMAIL_MFA_USER_ID")] = user.id
+                session["email_mfa_user_password"] = password  # Store password temporarily for master verification
                 session.modified = True
-                
+
                 current_app.logger.info(f"User '{username}' passed first factor, email MFA code sent.")
                 return success_response({"mfa_required": "email"}, status_code=202)  # 202 Accepted
-                
+
             except Exception as e:
                 current_app.logger.error(f"Failed to send email MFA code to {user.email}: {e}", exc_info=True)
                 return error_response("Failed to send verification code. Please try again.", 500)
         else:
             # No MFA enabled, proceed with login
-            login_user(user)
-            # Set session version
-            session["session_version"] = user.session_version
-            session.modified = True
-
-            # Update last login timestamp
-            user.update_last_login()
+            _complete_user_login(user, password)
 
             current_app.logger.info(f"User '{username}' logged in successfully (no MFA).")
 
@@ -185,17 +196,20 @@ def login_verify_otp():
     # Verify the OTP token
     totp = pyotp.TOTP(user.otp_secret)
     if totp.verify(otp_token):
-        # OTP verification successful, clear session marker and log in user
+        # OTP verification successful, clear session markers and log in user
         session.pop(get_config_value("SESSION_KEY_OTP_USER_ID"), None)
+        password = session.pop("otp_user_password", None)
         session.modified = True
 
-        login_user(user)
-        # Set session version
-        session["session_version"] = user.session_version
-        session.modified = True
-
-        # Update last login timestamp
-        user.update_last_login()
+        # Complete login with master verification
+        if password:
+            _complete_user_login(user, password)
+        else:
+            # Fallback if password not in session
+            login_user(user)
+            session["session_version"] = user.session_version
+            session.modified = True
+            user.update_last_login()
 
         current_app.logger.info(f"User ID '{user_id}' successfully authenticated with OTP.")
 
@@ -228,26 +242,29 @@ def login_verify_email():
         return error_response("Email MFA is not configured for this user or user not found.", 400)
 
     # Find and validate the verification code
-    code_entry = MfaVerificationCode.find_valid_code(user.id, verification_code, 'login')
+    code_entry = MfaVerificationCode.find_valid_code(user.id, verification_code, "login")
     if not code_entry:
         current_app.logger.warning(f"Invalid email MFA code for user {user.id}")
         return error_response("Invalid or expired verification code.", 401)
 
-    # Email verification successful, clear session marker and log in user
+    # Email verification successful, clear session markers and log in user
     session.pop(get_config_value("SESSION_KEY_EMAIL_MFA_USER_ID"), None)
+    password = session.pop("email_mfa_user_password", None)
     session.modified = True
 
-    login_user(user)
-    # Set session version
-    session["session_version"] = user.session_version
-    session.modified = True
+    # Complete login with master verification
+    if password:
+        _complete_user_login(user, password)
+    else:
+        # Fallback if password not in session
+        login_user(user)
+        session["session_version"] = user.session_version
+        session.modified = True
+        user.update_last_login()
 
     # Mark verification code as used
     code_entry.mark_as_used()
     db.session.commit()
-
-    # Update last login timestamp
-    user.update_last_login()
 
     current_app.logger.info(f"User ID '{user_id}' successfully authenticated with email MFA.")
 
@@ -271,21 +288,22 @@ def login_switch_to_email():
 
     try:
         # Generate and send email MFA code
-        verification_code = MfaVerificationCode.create_for_user(user.id, 'login')
-        
-        email_html = render_template('email/mfa_login_code.html', 
-                                     user=user, 
-                                     verification_code=verification_code.code)
+        verification_code = MfaVerificationCode.create_for_user(user.id, "login")
+
+        email_html = render_template("email/mfa_login_code.html", user=user, verification_code=verification_code.code)
         send_email(user.email, "Login Verification Code", email_html)
-        
+
         # Switch session markers from OTP to email MFA
         session.pop(get_config_value("SESSION_KEY_OTP_USER_ID"), None)
+        password = session.pop("otp_user_password", None)
         session[get_config_value("SESSION_KEY_EMAIL_MFA_USER_ID")] = user.id
+        if password:
+            session["email_mfa_user_password"] = password
         session.modified = True
-        
+
         current_app.logger.info(f"User {user.id} switched from OTP to email MFA fallback.")
         return success_response({"message": "Email verification code sent. Please check your inbox."})
-        
+
     except Exception as e:
         current_app.logger.error(f"Failed to send email MFA code for user {user.id}: {e}", exc_info=True)
         return error_response("Failed to send verification code. Please try again.", 500)
@@ -294,8 +312,18 @@ def login_switch_to_email():
 @auth_bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
+    user_id = current_user.id if current_user.is_authenticated else "unknown"
     logout_user()
-    current_app.logger.info(f"User ID {current_user.id if current_user.is_authenticated else 'unknown'} logged out.")
+
+    # Clear master verification on logout
+    MasterVerificationManager.clear_verification()
+
+    # Clear any temporary password storage
+    session.pop("otp_user_password", None)
+    session.pop("email_mfa_user_password", None)
+    session.modified = True
+
+    current_app.logger.info(f"User ID {user_id} logged out.")
     return success_response({"message": "Successfully logged out"})
 
 
@@ -310,7 +338,7 @@ def get_current_user():
 # Recovery key management endpoints
 @auth_bp.route("/recovery-keys", methods=["GET"])
 @login_required
-@limiter.limit("10 per hour")
+@limiter.limit("10 per minute")
 def get_recovery_key_status():
     """Check status of recovery keys (not the actual keys)"""
     recovery_key_count = len(current_user.recovery_keys)
@@ -346,59 +374,57 @@ def regenerate_recovery_keys():
 
 
 @auth_bp.route("/verify-email/<token>", methods=["GET"])
-@limiter.limit("10 per hour")
+@limiter.limit("10 per minute")
 def verify_email(token):
     """Verify email address using the verification token."""
     verification_token = EmailVerificationToken.find_valid_token(token)
-    
+
     if not verification_token:
         current_app.logger.warning(f"Invalid or expired email verification token used: {token}")
         return error_response("Invalid or expired verification link.", 400)
-    
+
     user = db.session.get(User, verification_token.user_id)
     if not user:
         current_app.logger.error(f"User not found for verification token: {verification_token.user_id}")
         return error_response("User not found.", 404)
-    
+
     if user.email_verified:
         current_app.logger.info(f"Email already verified for user {user.id}")
         return success_response({"message": "Email address is already verified."})
-    
+
     # Mark email as verified and token as used
     user.email_verified = True
     verification_token.mark_as_used()
     db.session.commit()
-    
+
     current_app.logger.info(f"Email verified successfully for user {user.id}")
     return success_response({"message": "Email address verified successfully! You can now enable email-based multi-factor authentication."})
 
 
 @auth_bp.route("/resend-verification", methods=["POST"])
 @login_required
-@limiter.limit("3 per hour")
+@limiter.limit("10 per minute")
 def resend_verification_email():
     """Resend email verification email to the current user."""
     user = current_user
-    
+
     if user.email_verified:
         return success_response({"message": "Email address is already verified."})
-    
+
     try:
         # Create new verification token
         verification_token = EmailVerificationToken.create_for_user(user.id)
-        
+
         # Generate verification URL
-        verification_url = url_for('auth.verify_email', token=verification_token.token, _external=True)
-        
+        verification_url = url_for("auth.verify_email", token=verification_token.token, _external=True)
+
         # Send verification email
-        email_html = render_template('email/welcome_verification.html', 
-                                     user=user, 
-                                     verification_url=verification_url)
+        email_html = render_template("email/welcome_verification.html", user=user, verification_url=verification_url)
         send_email(user.email, "Please Verify Your Email Address", email_html)
-        
+
         current_app.logger.info(f"Resent verification email to {user.email}")
         return success_response({"message": "Verification email sent. Please check your inbox."})
-        
+
     except Exception as e:
         current_app.logger.error(f"Failed to resend verification email to {user.email}: {e}", exc_info=True)
         return error_response("Failed to send verification email. Please try again later.", 500)

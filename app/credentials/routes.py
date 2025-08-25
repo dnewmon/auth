@@ -7,15 +7,11 @@ from ..models.user import User
 from ..models.credential import Credential
 from ..utils.encryption import encrypt_data, decrypt_data
 from ..utils.responses import success_response, error_response
+from ..utils.master_verification import MasterVerificationManager
 from .. import limiter
 import time
 
 logger = logging.getLogger(__name__)
-
-# Session key for temporarily storing the master password hash
-MASTER_PASSWORD_SESSION_KEY = "master_password_verified"
-# Time in seconds that the master password verification remains valid
-MASTER_PASSWORD_TIMEOUT = 300  # 5 minutes
 
 
 @credentials_bp.route("/verify-master", methods=["POST"])
@@ -28,15 +24,9 @@ def verify_master_password():
         return error_response("Master password is required.", 400)
 
     try:
-        # Try to get master key - this will validate the password
-        master_key = current_user.get_master_key(data["master_password"])
-
-        # Store verification in session with timestamp
-        session[MASTER_PASSWORD_SESSION_KEY] = {"verified": True, "timestamp": int(time.time())}
-        session.modified = True
-
+        MasterVerificationManager.verify_and_store(data["master_password"])
         return success_response(message="Master password verified.")
-    except ValueError as e:
+    except ValueError:
         return error_response("Invalid master password.", 401)
 
 
@@ -44,37 +34,13 @@ def verify_master_password():
 @login_required
 def check_master_verification_status():
     """Check the current status of master password verification."""
-    verification = session.get(MASTER_PASSWORD_SESSION_KEY)
-    current_time = int(time.time())
-
-    if not verification or not verification.get("verified"):
-        return success_response({"verified": False, "expires_at": None, "time_remaining": 0})
-
-    verification_time = verification["timestamp"]
-    expires_at = verification_time + MASTER_PASSWORD_TIMEOUT
-    time_remaining = max(0, expires_at - current_time)
-
-    # If expired, clean up the session
-    if time_remaining == 0:
-        session.pop(MASTER_PASSWORD_SESSION_KEY, None)
-        session.modified = True
-
-    return success_response({"verified": time_remaining > 0, "expires_at": expires_at, "time_remaining": time_remaining})
+    status = MasterVerificationManager.get_status()
+    return success_response(status)
 
 
 def require_master_password():
     """Check if master password verification is still valid."""
-    verification = session.get(MASTER_PASSWORD_SESSION_KEY)
-    if not verification or not verification.get("verified"):
-        return False
-
-    # Check if verification has expired
-    if int(time.time()) - verification["timestamp"] > MASTER_PASSWORD_TIMEOUT:
-        session.pop(MASTER_PASSWORD_SESSION_KEY, None)
-        session.modified = True
-        return False
-
-    return True
+    return MasterVerificationManager.require_verification()
 
 
 @credentials_bp.route("/", methods=["POST"])
@@ -183,6 +149,7 @@ def get_credential(credential_id):
 
 @credentials_bp.route("/<int:credential_id>", methods=["PUT"])
 @login_required
+@limiter.limit("1 per minute")
 def update_credential(credential_id):
     """Update an existing credential."""
     data = request.get_json()
@@ -248,8 +215,36 @@ def update_credential(credential_id):
         return error_response("Could not save updated credential.", 500)
 
 
+@credentials_bp.route("/<int:credential_id>/password", methods=["POST"])
+@login_required
+@limiter.limit("20 per minute")
+def get_credential_password(credential_id):
+    """Get only the decrypted password for a specific credential."""
+    data = request.get_json()
+    if not data or "master_password" not in data:
+        return error_response("Master password required.", 400)
+
+    credential = Credential.query.get_or_404(credential_id)
+    if credential.user_id != current_user.id:
+        return error_response("You do not have permission to access this credential.", 403)
+
+    try:
+        # Get master encryption key using provided password
+        master_key = current_user.get_master_key(data["master_password"])
+        decrypted_password = decrypt_data(master_key, credential.encrypted_password)
+    except ValueError as e:
+        logger.error(f"Invalid master password: {e}")
+        return error_response("Invalid master password.", 401)
+    except Exception as e:
+        logger.error(f"Error decrypting credential {credential.id}: {e}", exc_info=True)
+        return error_response("Failed to decrypt credential.", 500)
+
+    return success_response({"password": decrypted_password})
+
+
 @credentials_bp.route("/<int:credential_id>", methods=["DELETE"])
 @login_required
+@limiter.limit("1 per minute")
 def delete_credential(credential_id):
     """Delete a credential."""
     # No master password needed for deletion, but might want to add it for extra security
@@ -265,6 +260,3 @@ def delete_credential(credential_id):
         db.session.rollback()
         logger.error(f"Database error deleting credential: {e}")
         return error_response("Could not delete credential.", 500)
-
-
-# Routes for CRUD operations on credentials will go here in Phase 3

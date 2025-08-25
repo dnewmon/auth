@@ -42,9 +42,7 @@ def create_app(config_name: str = "development") -> Flask:
         raise RuntimeError("SECRET_KEY not set in configuration!")
 
     # Configure logging
-    logging.basicConfig(
-        level=getattr(logging, config_obj.LOG_LEVEL.upper(), logging.INFO)
-    )
+    logging.basicConfig(level=getattr(logging, config_obj.LOG_LEVEL.upper(), logging.INFO))
     app.logger.info(f"Starting app with '{config_name}' config.")
 
     # Initialize extensions
@@ -82,13 +80,11 @@ def create_app(config_name: str = "development") -> Flask:
     # Register Blueprints (API routes first - they take precedence)
     from .auth import auth_bp
     from .credentials import credentials_bp
-    from .users import users_bp
     from .security import security_bp
     from .utils import utils_bp  # Assuming utils might have routes later
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(credentials_bp, url_prefix="/api/credentials")
-    app.register_blueprint(users_bp, url_prefix="/api/users")
     app.register_blueprint(security_bp, url_prefix="/api/security")
     app.register_blueprint(utils_bp, url_prefix="/api/utils")
 
