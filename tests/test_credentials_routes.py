@@ -11,7 +11,7 @@ from flask import session
 from app import db
 from app.models.user import User
 from app.models.credential import Credential
-from app.credentials.routes import MASTER_PASSWORD_SESSION_KEY, MASTER_PASSWORD_TIMEOUT
+from app.utils.master_verification import MasterVerificationManager
 
 
 def make_unique_username(base="testuser"):
@@ -195,9 +195,9 @@ class TestCheckMasterVerificationStatus:
             with patch('flask_login.utils._get_user', return_value=test_user):
                 # Manually set expired verification in session
                 with client.session_transaction() as sess:
-                    sess[MASTER_PASSWORD_SESSION_KEY] = {
+                    sess[MasterVerificationManager.SESSION_KEY] = {
                         'verified': True,
-                        'timestamp': int(time.time()) - MASTER_PASSWORD_TIMEOUT - 1
+                        'timestamp': int(time.time()) - MasterVerificationManager.TIMEOUT_SECONDS - 1
                     }
                 
                 response = client.get('/api/credentials/verify-master/status')
@@ -765,7 +765,7 @@ class TestRequireMasterPassword:
         with client.application.test_request_context():
             # Set session data directly in the request context
             from flask import session
-            session[MASTER_PASSWORD_SESSION_KEY] = {
+            session[MasterVerificationManager.SESSION_KEY] = {
                 'verified': True,
                 'timestamp': int(time.time())
             }
@@ -780,9 +780,9 @@ class TestRequireMasterPassword:
         with client.application.test_request_context():
             with client.session_transaction() as sess:
                 # Set expired verification
-                sess[MASTER_PASSWORD_SESSION_KEY] = {
+                sess[MasterVerificationManager.SESSION_KEY] = {
                     'verified': True,
-                    'timestamp': int(time.time()) - MASTER_PASSWORD_TIMEOUT - 1
+                    'timestamp': int(time.time()) - MasterVerificationManager.TIMEOUT_SECONDS - 1
                 }
             
             result = require_master_password()

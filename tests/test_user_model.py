@@ -208,9 +208,15 @@ class TestUser:
         assert user.last_login is not None
         assert isinstance(user.last_login, datetime.datetime)
         
-        # Check that the timestamp is recent (SQLite strips timezone info)
-        now = datetime.datetime.now()
-        time_diff = (now - user.last_login).total_seconds()
+        # Check that the timestamp is recent (convert to UTC for comparison)
+        now = datetime.datetime.now(timezone.utc)
+        # Handle timezone comparison - user.last_login should be timezone-aware
+        if user.last_login.tzinfo is None:
+            # If stored as naive, assume it's UTC
+            user_login_time = user.last_login.replace(tzinfo=timezone.utc)
+        else:
+            user_login_time = user.last_login
+        time_diff = (now - user_login_time).total_seconds()
         assert time_diff < 5
 
     def test_user_repr(self, app_context):

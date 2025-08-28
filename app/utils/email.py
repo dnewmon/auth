@@ -56,9 +56,8 @@ def send_email(to, subject, template=None, text_body=None):
         msg_kwargs["sender"] = app.config["MAIL_DEFAULT_SENDER"]
 
     msg = Message(**msg_kwargs)
-    send_async_email(app, msg)
-
+    
     # Send email asynchronously in a background thread
-    # thr = Thread(target=send_async_email, args=[app, msg])
-    # thr.start()
-    # return thr
+    thr = Thread(target=send_async_email, args=[app, msg])
+    thr.start()
+    return thr

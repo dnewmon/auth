@@ -4,7 +4,7 @@ Unit tests for authentication routes.
 
 import pytest
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 from app.models.user import User
 from app.models.database import db
 import uuid
@@ -88,7 +88,7 @@ class TestRegisterRoute:
         data = response.get_json()
         assert 'Invalid email address' in data['message']
 
-    @patch('app.models.config.get_config_value')
+    @patch('app.auth.routes.get_config_value')
     def test_register_short_password(self, mock_config, client, app_context):
         """Test registration with password too short."""
         mock_config.return_value = 8  # MIN_PASSWORD_LENGTH
@@ -102,7 +102,7 @@ class TestRegisterRoute:
         
         assert response.status_code == 400
         data = response.get_json()
-        assert 'Password must be at least 12 characters long' in data['message']
+        assert 'Password must be at least 8 characters long' in data['message']
 
     def test_register_duplicate_username(self, client, app_context):
         """Test registration with existing username."""
@@ -188,7 +188,7 @@ class TestLoginRoute:
         db.session.add(user)
         db.session.commit()
         
-        with patch('app.models.config.get_config_value') as mock_config:
+        with patch('app.auth.routes.get_config_value') as mock_config:
             mock_config.return_value = 'otp_user_id'
             
             response = client.post('/api/auth/login',
@@ -247,11 +247,12 @@ class TestLoginRoute:
         data = response.get_json()
         assert 'Invalid username or password' in data['message']
 
+    @patch('app.models.MfaVerificationCode.create_for_user')
     @patch('app.auth.routes.send_email')
     @patch('app.auth.routes.render_template')
     @patch('app.auth.routes.get_config_value')
-    def test_login_with_email_notification(self, mock_config, mock_render, mock_send_email, client, app_context):
-        """Test login with email notification enabled."""
+    def test_login_with_email_mfa(self, mock_config, mock_render, mock_send_email, mock_create_code, client, app_context):
+        """Test login with email MFA enabled."""
         username = make_unique_username()
         email = f'{uuid.uuid4()}@example.com'
         
@@ -262,21 +263,29 @@ class TestLoginRoute:
         db.session.add(user)
         db.session.commit()
         
-        mock_config.side_effect = lambda key: 'email/login_notification.html' if 'EMAIL_LOGIN_NOTIFICATION_TEMPLATE' in key else None
-        mock_render.return_value = '<html>Login notification</html>'
+        # Mock verification code creation
+        mock_verification_code = Mock()
+        mock_verification_code.code = '123456'
+        mock_create_code.return_value = mock_verification_code
+        
+        mock_config.return_value = 'SESSION_KEY_EMAIL_MFA_USER_ID'
+        mock_render.return_value = '<html>Verification code email</html>'
         
         response = client.post('/api/auth/login',
                              json={'username': username, 'password': 'validpassword123'})
         
-        assert response.status_code == 200
-        mock_send_email.assert_called_once_with(email, "Security Alert: New Login Detected", '<html>Login notification</html>')
+        assert response.status_code == 202
+        data = response.get_json()
+        assert data['status'] == 'success'
+        assert data['data']['mfa_required'] == 'email'
+        mock_send_email.assert_called_once_with(email, "Login Verification Code", '<html>Verification code email</html>')
 
 
 class TestLoginVerifyOtpRoute:
     """Test cases for the /auth/login/verify-otp endpoint."""
 
     @patch('pyotp.TOTP')
-    @patch('app.models.config.get_config_value')
+    @patch('app.auth.routes.get_config_value')
     def test_verify_otp_success(self, mock_config, mock_totp_class, client, app_context):
         """Test successful OTP verification."""
         username = make_unique_username()
@@ -307,7 +316,7 @@ class TestLoginVerifyOtpRoute:
         assert data['status'] == 'success'
         assert data['data']['message'] == 'Login successful'
 
-    @patch('app.models.config.get_config_value')
+    @patch('app.auth.routes.get_config_value')
     def test_verify_otp_no_session(self, mock_config, client, app_context):
         """Test OTP verification without session."""
         mock_config.return_value = 'otp_user_id'
@@ -319,7 +328,7 @@ class TestLoginVerifyOtpRoute:
         data = response.get_json()
         assert 'Primary authentication step not completed' in data['message']
 
-    @patch('app.models.config.get_config_value')
+    @patch('app.auth.routes.get_config_value')
     def test_verify_otp_missing_token(self, mock_config, client, app_context):
         """Test OTP verification with missing token."""
         mock_config.return_value = 'otp_user_id'
@@ -335,7 +344,7 @@ class TestLoginVerifyOtpRoute:
         assert 'Missing OTP token' in data['message']
 
     @patch('pyotp.TOTP')
-    @patch('app.models.config.get_config_value')
+    @patch('app.auth.routes.get_config_value')
     def test_verify_otp_invalid_token(self, mock_config, mock_totp_class, client, app_context):
         """Test OTP verification with invalid token."""
         username = make_unique_username()

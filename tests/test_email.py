@@ -23,9 +23,13 @@ class TestSendAsyncEmail:
         mock_app = Mock()
         mock_app.app_context.return_value.__enter__ = Mock()
         mock_app.app_context.return_value.__exit__ = Mock(return_value=None)
+        mock_app.logger = Mock()
         
-        # Create a mock message
+        # Create a mock message with required attributes
         mock_message = Mock(spec=Message)
+        mock_message.recipients = ['test@example.com']
+        mock_message.sender = 'noreply@example.com'
+        mock_message.subject = 'Test Subject'
         
         # Mock the mail instance
         with patch('app.utils.email.mail') as mock_mail:
@@ -48,8 +52,11 @@ class TestSendAsyncEmail:
         mock_logger = Mock()
         mock_app.logger = mock_logger
         
-        # Create a mock message
+        # Create a mock message with required attributes
         mock_message = Mock(spec=Message)
+        mock_message.recipients = ['test@example.com']
+        mock_message.sender = 'noreply@example.com'
+        mock_message.subject = 'Test Subject'
         
         # Mock the mail instance to raise an exception
         with patch('app.utils.email.mail') as mock_mail:
@@ -88,9 +95,12 @@ class TestSendAsyncEmail:
         mock_app = Mock()
         mock_app.app_context.return_value.__enter__ = Mock()
         mock_app.app_context.return_value.__exit__ = Mock(return_value=None)
+        mock_app.logger = Mock()
         
         # Create a mock message with unicode content
         mock_message = Mock(spec=Message)
+        mock_message.recipients = ['test@example.com']
+        mock_message.sender = 'noreply@example.com'
         mock_message.subject = "Test Subject with émojis 🚀"
         mock_message.body = "Test body with unicode characters: café, naïve, résumé"
         
@@ -329,6 +339,9 @@ class TestEmailIntegration:
             # Test that send_async_email works with real app context
             with app.app_context():
                 mock_message = Mock(spec=Message)
+                mock_message.recipients = ['test@example.com']
+                mock_message.sender = 'noreply@example.com'
+                mock_message.subject = 'Test Subject'
                 send_async_email(app, mock_message)
                 
                 # Verify mail.send was called

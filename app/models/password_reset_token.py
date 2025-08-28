@@ -11,7 +11,7 @@ class PasswordResetToken(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     token_hash = db.Column(db.String(128), unique=True, nullable=False, index=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.UTC), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
     used = db.Column(db.Boolean, default=False, nullable=False)
 
@@ -22,7 +22,7 @@ class PasswordResetToken(db.Model):
         self.token_hash = self._hash_token(token)
         # Use Flask app context to get configuration for expiration delta
         expires_delta = current_app.config.get("PASSWORD_RESET_TOKEN_EXPIRATION", datetime.timedelta(hours=1))
-        self.expires_at = datetime.datetime.now(datetime.UTC) + expires_delta
+        self.expires_at = datetime.datetime.now(datetime.timezone.utc) + expires_delta
         super().__init__(**kwargs)
 
     @staticmethod
@@ -41,7 +41,7 @@ class PasswordResetToken(db.Model):
         return cls.query.filter_by(token_hash=hashed_token).first()
 
     def is_valid(self):
-        return not self.used and self.expires_at > datetime.datetime.now(datetime.UTC)
+        return not self.used and self.expires_at > datetime.datetime.now(datetime.timezone.utc)
 
     def mark_as_used(self):
         self.used = True

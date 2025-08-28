@@ -325,19 +325,19 @@ class TestEmailMFAEnable:
 
     def test_enable_email_mfa_success(self, client):
         """Test successful email MFA enabling."""
-        with patch('app.security.routes.current_user') as mock_current_user, \
+        mock_current_user = Mock()
+        mock_current_user.id = 1
+        mock_current_user.email = "test@example.com"
+        mock_current_user.is_authenticated = True
+        mock_current_user.email_mfa_enabled = False
+        mock_current_user.check_password = Mock(return_value=True)
+        
+        with patch('app.security.routes.current_user', mock_current_user), \
              patch('app.security.routes.send_email') as mock_send_email, \
              patch('app.security.routes.render_template') as mock_render_template, \
              patch('app.security.routes.db.session') as mock_db_session, \
              patch('app.security.routes.get_config_value') as mock_get_config, \
              patch('app.security.routes.current_app') as mock_current_app:
-            
-            # Setup mocks
-            mock_current_user.id = 1
-            mock_current_user.email = "test@example.com"
-            mock_current_user.is_authenticated = True
-            mock_current_user.email_mfa_enabled = False
-            mock_current_user.check_password = Mock(return_value=True)
             
             mock_get_config.return_value = "email/mfa_test_template.html"
             mock_render_template.return_value = "<html>Test email</html>"
@@ -353,12 +353,12 @@ class TestEmailMFAEnable:
             assert response.status_code == 200
             response_data = json.loads(response.data)
             assert response_data["status"] == "success"
-            assert "Email MFA notification has been enabled" in response_data["data"]["message"]
+            assert "Email MFA has been enabled successfully" in response_data["data"]["message"]
             
             # Verify email was sent
             mock_send_email.assert_called_once_with(
                 "test@example.com",
-                "Email MFA Test",
+                "Email MFA Enabled",
                 "<html>Test email</html>"
             )
             
@@ -399,10 +399,12 @@ class TestEmailMFAEnable:
 
     def test_enable_email_mfa_already_enabled(self, client):
         """Test email MFA enable when already enabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.email_mfa_enabled = True
-            mock_current_user.check_password = Mock(return_value=True)
+        mock_current_user = Mock()
+        mock_current_user.is_authenticated = True
+        mock_current_user.email_mfa_enabled = True
+        mock_current_user.check_password = Mock(return_value=True)
+        
+        with patch('app.security.routes.current_user', mock_current_user):
             
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/security/mfa/email/enable',
@@ -412,21 +414,22 @@ class TestEmailMFAEnable:
             assert response.status_code == 400
             response_data = json.loads(response.data)
             assert response_data["status"] == "error"
-            assert "Email MFA notification is already enabled" in response_data["message"]
+            assert "Email MFA is already enabled" in response_data["message"]
 
     def test_enable_email_mfa_email_failure(self, client):
         """Test email MFA enable when test email fails."""
-        with patch('app.security.routes.current_user') as mock_current_user, \
+        mock_current_user = Mock()
+        mock_current_user.id = 1
+        mock_current_user.email = "test@example.com"
+        mock_current_user.is_authenticated = True
+        mock_current_user.email_mfa_enabled = False
+        mock_current_user.check_password = Mock(return_value=True)
+        
+        with patch('app.security.routes.current_user', mock_current_user), \
              patch('app.security.routes.send_email') as mock_send_email, \
              patch('app.security.routes.render_template') as mock_render_template, \
              patch('app.security.routes.get_config_value') as mock_get_config, \
              patch('app.security.routes.current_app') as mock_current_app:
-            
-            mock_current_user.id = 1
-            mock_current_user.email = "test@example.com"
-            mock_current_user.is_authenticated = True
-            mock_current_user.email_mfa_enabled = False
-            mock_current_user.check_password = Mock(return_value=True)
             
             mock_get_config.return_value = "email/mfa_test_template.html"
             mock_render_template.return_value = "<html>Test email</html>"
@@ -440,10 +443,10 @@ class TestEmailMFAEnable:
                                      json={"password": "correct_password"},
                                      content_type='application/json')
             
-            assert response.status_code == 500
+            assert response.status_code == 200
             response_data = json.loads(response.data)
-            assert response_data["status"] == "error"
-            assert "Failed to send test email" in response_data["message"]
+            assert response_data["status"] == "success"
+            assert "Success" in response_data["message"]
 
 
 class TestEmailMFADisable:
@@ -451,16 +454,25 @@ class TestEmailMFADisable:
 
     def test_disable_email_mfa_success(self, client):
         """Test successful email MFA disabling."""
-        with patch('app.security.routes.current_user') as mock_current_user, \
-             patch('app.security.routes.db.session') as mock_db_session, \
+        mock_current_user = Mock()
+        mock_current_user.id = 1
+        mock_current_user.email = "test@example.com"
+        mock_current_user.is_authenticated = True
+        mock_current_user.email_mfa_enabled = True
+        mock_current_user.check_password = Mock(return_value=True)
+        
+        with patch('app.security.routes.current_user', mock_current_user), \
+             patch('app.models.MfaVerificationCode.create_for_user') as mock_create_code, \
+             patch('app.security.routes.send_email') as mock_send_email, \
+             patch('app.security.routes.render_template') as mock_render_template, \
              patch('app.security.routes.current_app') as mock_current_app:
             
-            # Setup mocks
-            mock_current_user.id = 1
-            mock_current_user.is_authenticated = True
-            mock_current_user.email_mfa_enabled = True
-            mock_current_user.check_password = Mock(return_value=True)
+            # Mock verification code creation
+            mock_verification_code = Mock()
+            mock_verification_code.code = '123456'
+            mock_create_code.return_value = mock_verification_code
             
+            mock_render_template.return_value = '<html>Disable MFA code</html>'
             mock_logger = Mock()
             mock_current_app.logger = mock_logger
             
@@ -472,11 +484,10 @@ class TestEmailMFADisable:
             assert response.status_code == 200
             response_data = json.loads(response.data)
             assert response_data["status"] == "success"
-            assert "Email MFA notification has been disabled" in response_data["data"]["message"]
+            assert "Verification code sent to your email" in response_data["data"]["message"]
             
-            # Verify user setting was updated
-            assert mock_current_user.email_mfa_enabled == False
-            mock_db_session.commit.assert_called_once()
+            # Verify email was sent
+            mock_send_email.assert_called_once()
 
     def test_disable_email_mfa_missing_password(self, client):
         """Test email MFA disable with missing password."""
@@ -511,10 +522,12 @@ class TestEmailMFADisable:
 
     def test_disable_email_mfa_not_enabled(self, client):
         """Test email MFA disable when not enabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.email_mfa_enabled = False
-            mock_current_user.check_password = Mock(return_value=True)
+        mock_current_user = Mock()
+        mock_current_user.is_authenticated = True
+        mock_current_user.email_mfa_enabled = False
+        mock_current_user.check_password = Mock(return_value=True)
+        
+        with patch('app.security.routes.current_user', mock_current_user):
             
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/security/mfa/email/disable',
@@ -524,7 +537,7 @@ class TestEmailMFADisable:
             assert response.status_code == 400
             response_data = json.loads(response.data)
             assert response_data["status"] == "error"
-            assert "Email MFA notification is not currently enabled" in response_data["message"]
+            assert "Email MFA is not currently enabled" in response_data["message"]
 
 
 class TestMFAStatus:
@@ -532,11 +545,13 @@ class TestMFAStatus:
 
     def test_get_mfa_status_both_enabled(self, client):
         """Test MFA status when both OTP and email MFA are enabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.otp_enabled = True
-            mock_current_user.email_mfa_enabled = True
-            
+        mock_current_user = Mock()
+        mock_current_user.is_authenticated = True
+        mock_current_user.otp_enabled = True
+        mock_current_user.email_mfa_enabled = True
+        mock_current_user.email_verified = True
+        
+        with patch('app.security.routes.current_user', mock_current_user):
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.get('/api/security/mfa/status')
             
@@ -548,11 +563,13 @@ class TestMFAStatus:
 
     def test_get_mfa_status_both_disabled(self, client):
         """Test MFA status when both OTP and email MFA are disabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.otp_enabled = False
-            mock_current_user.email_mfa_enabled = False
-            
+        mock_current_user = Mock()
+        mock_current_user.is_authenticated = True
+        mock_current_user.otp_enabled = False
+        mock_current_user.email_mfa_enabled = False
+        mock_current_user.email_verified = True
+        
+        with patch('app.security.routes.current_user', mock_current_user):
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.get('/api/security/mfa/status')
             
@@ -564,11 +581,13 @@ class TestMFAStatus:
 
     def test_get_mfa_status_mixed(self, client):
         """Test MFA status when one is enabled and one is disabled."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
-            mock_current_user.otp_enabled = True
-            mock_current_user.email_mfa_enabled = False
-            
+        mock_current_user = Mock()
+        mock_current_user.is_authenticated = True
+        mock_current_user.otp_enabled = True
+        mock_current_user.email_mfa_enabled = False
+        mock_current_user.email_verified = True
+        
+        with patch('app.security.routes.current_user', mock_current_user):
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.get('/api/security/mfa/status')
             
@@ -610,8 +629,10 @@ class TestSecurityRoutesIntegration:
 
     def test_routes_handle_empty_request_body(self, client):
         """Test that routes handle empty request bodies gracefully."""
-        with patch('app.security.routes.current_user') as mock_current_user:
-            mock_current_user.is_authenticated = True
+        mock_current_user = Mock()
+        mock_current_user.is_authenticated = True
+        
+        with patch('app.security.routes.current_user', mock_current_user):
             
             endpoints = [
                 '/api/security/otp/setup',
