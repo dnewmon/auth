@@ -260,3 +260,51 @@ def delete_credential(credential_id):
         db.session.rollback()
         logger.error(f"Database error deleting credential: {e}")
         return error_response("Could not delete credential.", 500)
+
+
+@credentials_bp.route("/audit", methods=["POST"])
+@login_required
+@limiter.limit("5 per minute")
+def audit_passwords():
+    """Audit credential passwords by searching decrypted passwords for a search term."""
+    data = request.get_json()
+    if not data or not all(k in data for k in ("master_password", "search_term")):
+        return error_response("Master password and search term are required.", 400)
+
+    search_term = data["search_term"].lower().strip()
+    if not search_term:
+        return error_response("Search term cannot be empty.", 400)
+
+    try:
+        # Get master encryption key using provided password
+        master_key = current_user.get_master_key(data["master_password"])
+    except ValueError as e:
+        logger.error(f"Invalid master password during audit: {e}")
+        return error_response("Invalid master password.", 401)
+    except Exception as e:
+        logger.error(f"Error retrieving master key for audit: {e}", exc_info=True)
+        return error_response("Failed to verify master password.", 500)
+
+    # Get all user's credentials
+    user_creds = Credential.query.filter_by(user_id=current_user.id).order_by(Credential.category).order_by(Credential.service_name).all()
+    
+    matching_credentials = []
+    
+    for cred in user_creds:
+        try:
+            # Decrypt the password and check if search term is contained
+            decrypted_password = decrypt_data(master_key, cred.encrypted_password)
+            if search_term in decrypted_password.lower():
+                matching_credentials.append({
+                    "id": cred.id,
+                    "service_name": cred.service_name,
+                    "username": cred.username,
+                    "service_url": cred.service_url,
+                    "category": cred.category
+                })
+        except Exception as e:
+            logger.error(f"Error decrypting credential {cred.id} during audit: {e}", exc_info=True)
+            # Continue with other credentials if one fails to decrypt
+            continue
+
+    return success_response(matching_credentials)

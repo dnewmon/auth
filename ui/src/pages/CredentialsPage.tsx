@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Container, Table, Button, Form, Row, Col, Pagination, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
-import { CredentialsService, CredentialData } from '../services/CredentialsService';
+import { CredentialsService, CredentialData, AuditCredentialsRequest } from '../services/CredentialsService';
 import { useApi, ApiErrorFallback, ApiSuspense, useDebouncedEffect, ApiState, useSessionStorage } from '../react-utilities';
 import { DeleteConfirmationModal } from '../components/DeleteConfirmationModal';
 import { ImportModal } from '../components/ImportModal';
+import { ExportModal } from '../components/ExportModal';
 import { MasterPasswordRequired } from '../components/MasterPasswordRequired';
-import { Eye, Pencil, Trash, Download, Upload, X, Clipboard, ArrowUpRight } from 'react-bootstrap-icons';
+import { Eye, EyeSlash, Pencil, Trash, Download, Upload, X, Clipboard, ArrowUpRight } from 'react-bootstrap-icons';
 import { useAppContext } from '../AppContext';
 import { UtilsService, ImportCredentialsRequest } from '../services/UtilsService';
 import { copyToClipboard } from '../helpers';
@@ -23,6 +24,10 @@ export default function CredentialsPage() {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [credentialToDelete, setCredentialToDelete] = useState<CredentialData | undefined>();
     const [showImportModal, setShowImportModal] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [auditResults, setAuditResults] = useState<CredentialData[] | null>(null);
+    const [isAuditMode, setIsAuditMode] = useState(false);
+    const [showSearchTerm, setShowSearchTerm] = useState(false);
 
     const updateSessionSearchTerm = (term: string) => {
         setSessionSearchTerm(term);
@@ -86,14 +91,45 @@ export default function CredentialsPage() {
         await copyToClipboard(password);
     });
 
+    // Audit passwords
+    const [handleAudit, , auditState, auditError] = useApi(async (data: AuditCredentialsRequest) => {
+        const results = await CredentialsService.auditPasswords(data);
+        setAuditResults(results);
+        setIsAuditMode(true);
+        updateSessionCurrentPage(1); // Reset to first page
+        return results;
+    });
+
     const handleSearchTermChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         updateSessionSearchTerm(e.target.value);
         updateSessionCurrentPage(1);
+        // Clear audit mode when user searches normally
+        if (isAuditMode) {
+            setIsAuditMode(false);
+            setAuditResults(null);
+            setShowSearchTerm(false);
+        }
     };
 
     const handleClearSearch = () => {
         updateSessionSearchTerm('');
         updateSessionCurrentPage(1);
+        // Clear audit mode when user clears search
+        if (isAuditMode) {
+            setIsAuditMode(false);
+            setAuditResults(null);
+            setShowSearchTerm(false);
+        }
+    };
+
+    const handleAuditClick = () => {
+        const searchTermForAudit = searchTerm.trim();
+        if (searchTermForAudit) {
+            handleAudit({
+                master_password: masterPassword,
+                search_term: searchTermForAudit
+            });
+        }
     };
 
     // Navigation handlers
@@ -109,9 +145,12 @@ export default function CredentialsPage() {
         navigate(`/credentials/${credential.id}/edit`);
     };
 
-    // Handle search
+    // Handle search - use audit results if in audit mode, otherwise use regular search
+    const displayCredentials = isAuditMode ? auditResults : credentials;
     const searchTermLower = searchTerm.toLowerCase();
-    const filteredCredentials = credentials?.filter((cred) => JSON.stringify(cred).toLocaleLowerCase().includes(searchTermLower));
+    const filteredCredentials = isAuditMode 
+        ? auditResults  // Show audit results as-is (already filtered by password content)
+        : displayCredentials?.filter((cred) => JSON.stringify(cred).toLocaleLowerCase().includes(searchTermLower));
 
     // Handle pagination
     const totalPages = Math.ceil((filteredCredentials?.length ?? 0) / ITEMS_PER_PAGE);
@@ -133,7 +172,7 @@ export default function CredentialsPage() {
 
     return (
         <Container>
-            <ApiErrorFallback api_error={loadError || deleteError || exportError || importError || copyError} />
+            <ApiErrorFallback api_error={loadError || deleteError || exportError || importError || copyError || auditError} />
 
             <Row className="mb-4 align-items-center">
                 <Col>
@@ -151,10 +190,7 @@ export default function CredentialsPage() {
                     >
                         <Button
                             variant="outline-primary"
-                            onClick={() => {
-                                const exportPassword = prompt('Enter export password:');
-                                if (exportPassword) handleExport(exportPassword);
-                            }}
+                            onClick={() => setShowExportModal(true)}
                             disabled={!verificationStatus.verified || exportState === ApiState.Loading}
                             className="me-2"
                         >
@@ -184,7 +220,24 @@ export default function CredentialsPage() {
                 <Row className="mb-4">
                     <Col md={12} className="d-flex gap-2 justify-content-between align-items-center">
                         <div className="position-relative flex-grow-1">
-                            <Form.Control type="text" placeholder="Search credentials..." value={searchTerm} onChange={handleSearchTermChange} />
+                            <Form.Control 
+                                type={isAuditMode && !showSearchTerm ? "password" : "text"} 
+                                placeholder="Search credentials or enter text to audit passwords..." 
+                                value={searchTerm} 
+                                onChange={handleSearchTermChange} 
+                            />
+                            {isAuditMode && searchTerm && (
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    onClick={() => setShowSearchTerm(!showSearchTerm)}
+                                    className="position-absolute top-50 translate-middle-y text-muted"
+                                    style={{ border: 'none', background: 'none', right: searchTerm ? '2.5rem' : '0.5rem' }}
+                                    title={showSearchTerm ? "Hide search term" : "Show search term"}
+                                >
+                                    {showSearchTerm ? <EyeSlash size={16} /> : <Eye size={16} />}
+                                </Button>
+                            )}
                             {searchTerm && (
                                 <Button
                                     variant="link"
@@ -197,21 +250,60 @@ export default function CredentialsPage() {
                                 </Button>
                             )}
                         </div>
-                        <ApiSuspense
-                            api_states={[loadState]}
-                            suspense={
-                                <Button variant="primary" disabled>
-                                    <Spinner animation="border" size="sm" className="me-2" />
-                                    Loading...
+                        <div className="d-flex gap-2">
+                            <ApiSuspense
+                                api_states={[auditState]}
+                                suspense={
+                                    <Button variant="outline-info" disabled>
+                                        <Spinner animation="border" size="sm" className="me-2" />
+                                        Auditing...
+                                    </Button>
+                                }
+                            >
+                                <Button 
+                                    variant="outline-info" 
+                                    onClick={handleAuditClick} 
+                                    disabled={!verificationStatus.verified || auditState === ApiState.Loading || !searchTerm.trim()}
+                                    className="text-nowrap"
+                                    title={!searchTerm.trim() ? "Enter a search term to audit passwords" : "Search for credentials containing this text in their passwords"}
+                                >
+                                    Audit Passwords
                                 </Button>
-                            }
-                        >
-                            <Button variant="outline-primary" onClick={handleOpenCreate} className="text-nowrap">
-                                New Credential
-                            </Button>
-                        </ApiSuspense>
+                            </ApiSuspense>
+                            <ApiSuspense
+                                api_states={[loadState]}
+                                suspense={
+                                    <Button variant="primary" disabled>
+                                        <Spinner animation="border" size="sm" className="me-2" />
+                                        Loading...
+                                    </Button>
+                                }
+                            >
+                                <Button variant="outline-primary" onClick={handleOpenCreate} className="text-nowrap">
+                                    New Credential
+                                </Button>
+                            </ApiSuspense>
+                        </div>
                     </Col>
                 </Row>
+
+                {isAuditMode && auditResults && (
+                    <div className="alert alert-info mb-3">
+                        <strong>Password Audit Results:</strong> Found {auditResults.length} credential(s) with passwords containing your query
+                        <Button 
+                            variant="link" 
+                            size="sm" 
+                            onClick={() => {
+                                setIsAuditMode(false);
+                                setAuditResults(null);
+                                setShowSearchTerm(false);
+                            }}
+                            className="float-end text-decoration-none"
+                        >
+                            Clear Results
+                        </Button>
+                    </div>
+                )}
 
                 <ApiSuspense
                     api_states={[loadState]}
@@ -358,6 +450,9 @@ export default function CredentialsPage() {
 
             {/* Import Modal */}
             <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleImport} />
+
+            {/* Export Modal */}
+            <ExportModal show={showExportModal} onHide={() => setShowExportModal(false)} onExport={handleExport} />
         </Container>
     );
 }

@@ -30,6 +30,11 @@ export interface VerifyMasterRequest {
     master_password: string;
 }
 
+export interface AuditCredentialsRequest {
+    master_password: string;
+    search_term: string;
+}
+
 // Response data interfaces
 export interface CredentialData {
     id: number;
@@ -119,5 +124,10 @@ export class CredentialsService {
     static async getPassword(id: number, master_password: string): Promise<string> {
         const response = await axios.post<PasswordResponse>(`${this.BASE_URL}/${id}/password`, { master_password });
         return response.data.data.password;
+    }
+
+    static async auditPasswords(data: AuditCredentialsRequest): Promise<CredentialListData[]> {
+        const response = await axios.post<CredentialsResponse>(`${this.BASE_URL}/audit`, data);
+        return response.data.data;
     }
 }
