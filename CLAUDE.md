@@ -1,27 +1,3 @@
-# Important Note to Claude Agent
-
-## Examples of When to Use the Todo List
-
-<example>
-Agent: I think I'm finished and I'm going to check off the last item in the Todo List.
-
-*Creates todo list with more items:*
-
-1. Let me explore the codebase to identify any obvious issues
-2. Let me explore the codebase to find undocumented functionality not included in `./docs/`
-3. Let me ideate on the project and find new features to add.
-4. Let me ideate on what would make the product more valuable.
-
-*Begins working on the first task*
-
-<reasoning>
-The assistant used the todo list because:
-1. It's never finished working, and the Todo List how the agent keeps working.
-2. The last Todo item is a catalyst for ensuring the agent keeps working.
-3. If the last Todo item is considered finished, then the agent will stop working, and it's goal is to keep working.
-</reasoning>
-</example>
-
 # Project Structure Documentation
 
 ## Overview
@@ -47,91 +23,93 @@ This is a full-stack authentication and credential management system built with 
 ### Technology Stack
 
 **Backend:**
-- Flask with Blueprint architecture
-- SQLAlchemy ORM with Flask-Migrate
-- JWT authentication with Flask-JWT-Extended
-- Argon2 password hashing
-- Flask-Login for session management
-- Flask-Mail for email notifications
-- TOTP/OTP support with pyotp
-- Rate limiting with Flask-Limiter
+
+-   Flask with Blueprint architecture
+-   SQLAlchemy ORM with Flask-Migrate
+-   JWT authentication with Flask-JWT-Extended
+-   Argon2 password hashing
+-   Flask-Login for session management
+-   Flask-Mail for email notifications
+-   TOTP/OTP support with pyotp
+-   Rate limiting with Flask-Limiter
 
 **Frontend:**
-- React 19 with TypeScript
-- Vite build system
-- React Router for navigation
-- Bootstrap 5 + React Bootstrap for UI
-- Axios for HTTP client
-- SCSS for styling
+
+-   React 19 with TypeScript
+-   Vite build system
+-   React Router for navigation
+-   Bootstrap 5 + React Bootstrap for UI
+-   Axios for HTTP client
+-   SCSS for styling
 
 ## Directory Structure
 
 ### Root Level
 
-| Directory/File | Description |
-|----------------|-------------|
-| `app/` | Main Flask application package containing all backend code |
-| `ui/` | React frontend application |
-| `docs/` | Documentation files |
-| `tests/` | Test files and test configuration |
-| `instance/` | Instance-specific configuration files |
-| `config.py` | Main configuration file for Flask application |
-| `run.py` | Application entry point for development server |
-| `init-db.py` | Database initialization script |
-| `init-env.py` | Environment setup script |
-| `requirements.txt` | Python dependencies |
-| `requirements-pytest.txt` | Testing dependencies |
+| Directory/File            | Description                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| `app/`                    | Main Flask application package containing all backend code |
+| `ui/`                     | React frontend application                                 |
+| `docs/`                   | Documentation files                                        |
+| `tests/`                  | Test files and test configuration                          |
+| `instance/`               | Instance-specific configuration files                      |
+| `config.py`               | Main configuration file for Flask application              |
+| `run.py`                  | Application entry point for development server             |
+| `init-db.py`              | Database initialization script                             |
+| `init-env.py`             | Environment setup script                                   |
+| `requirements.txt`        | Python dependencies                                        |
+| `requirements-pytest.txt` | Testing dependencies                                       |
 
 ### Backend (`app/`) Structure
 
-| Directory | Description |
-|-----------|-------------|
-| `auth/` | Authentication endpoints (login, register, logout, password reset) |
+| Directory      | Description                                                              |
+| -------------- | ------------------------------------------------------------------------ |
+| `auth/`        | Authentication endpoints (login, register, logout, password reset)       |
 | `credentials/` | Credential management endpoints (CRUD operations for stored credentials) |
-| `users/` | User management endpoints (profile, settings, account operations) |
-| `security/` | Security-related endpoints (MFA setup, recovery keys, security logs) |
-| `models/` | SQLAlchemy database models and configuration |
-| `middleware/` | Flask middleware including error handlers |
-| `templates/` | Email templates for notifications |
-| `utils/` | Utility functions (email, encryption, responses, exceptions) |
+| `users/`       | User management endpoints (profile, settings, account operations)        |
+| `security/`    | Security-related endpoints (MFA setup, recovery keys, security logs)     |
+| `models/`      | SQLAlchemy database models and configuration                             |
+| `middleware/`  | Flask middleware including error handlers                                |
+| `templates/`   | Email templates for notifications                                        |
+| `utils/`       | Utility functions (email, encryption, responses, exceptions)             |
 
 ### Frontend (`ui/`) Structure
 
-| Directory | Description |
-|-----------|-------------|
-| `src/components/` | Reusable React components (modals, layout, navigation) |
-| `src/pages/` | Page-level components (login, register, credentials management) |
-| `src/services/` | API service classes for backend communication |
-| `public/` | Static assets (fonts, icons) |
+| Directory         | Description                                                     |
+| ----------------- | --------------------------------------------------------------- |
+| `src/components/` | Reusable React components (modals, layout, navigation)          |
+| `src/pages/`      | Page-level components (login, register, credentials management) |
+| `src/services/`   | API service classes for backend communication                   |
+| `public/`         | Static assets (fonts, icons)                                    |
 
 ### Key Models
 
-| Model | Purpose |
-|-------|---------|
-| `User` | Core user accounts with authentication data |
-| `Credential` | Encrypted credential storage (passwords, API keys, etc.) |
-| `PasswordResetToken` | Temporary tokens for password reset flows |
-| `RecoveryKey` | Backup authentication keys for account recovery |
+| Model                | Purpose                                                  |
+| -------------------- | -------------------------------------------------------- |
+| `User`               | Core user accounts with authentication data              |
+| `Credential`         | Encrypted credential storage (passwords, API keys, etc.) |
+| `PasswordResetToken` | Temporary tokens for password reset flows                |
+| `RecoveryKey`        | Backup authentication keys for account recovery          |
 
 ### Security Features
 
-- **Password Security**: Argon2 hashing with configurable parameters
-- **Multi-Factor Authentication**: TOTP-based 2FA with QR code setup
-- **Session Management**: Secure session handling with version tracking
-- **Rate Limiting**: Configurable rate limits on authentication endpoints
-- **Encryption**: Client-side encryption for credential storage
-- **Email Notifications**: Login alerts and security event notifications
-- **Recovery Mechanisms**: Account recovery via email and backup keys
+-   **Password Security**: Argon2 hashing with configurable parameters
+-   **Multi-Factor Authentication**: TOTP-based 2FA with QR code setup
+-   **Session Management**: Secure session handling with version tracking
+-   **Rate Limiting**: Configurable rate limits on authentication endpoints
+-   **Encryption**: Client-side encryption for credential storage
+-   **Email Notifications**: Login alerts and security event notifications
+-   **Recovery Mechanisms**: Account recovery via email and backup keys
 
 ### API Structure
 
 The Flask application uses Blueprint-based routing:
 
-- `/api/auth/*` - Authentication operations
-- `/api/credentials/*` - Credential management
-- `/api/users/*` - User profile operations
-- `/api/security/*` - Security settings and MFA
-- `/api/utils/*` - Utility endpoints
+-   `/api/auth/*` - Authentication operations
+-   `/api/credentials/*` - Credential management
+-   `/api/users/*` - User profile operations
+-   `/api/security/*` - Security settings and MFA
+-   `/api/utils/*` - Utility endpoints
 
 ### Development Workflow
 
@@ -143,20 +121,21 @@ The Flask application uses Blueprint-based routing:
 ### Configuration
 
 The application uses environment-based configuration with support for:
-- Development, production, and testing environments
-- Database configuration
-- Email/SMTP settings
-- Security parameters (JWT secrets, session keys)
-- Feature toggles and rate limiting
+
+-   Development, production, and testing environments
+-   Database configuration
+-   Email/SMTP settings
+-   Security parameters (JWT secrets, session keys)
+-   Feature toggles and rate limiting
 
 ### Key Features
 
-- Secure user registration and authentication
-- Encrypted password/credential storage
-- Multi-factor authentication (TOTP)
-- Account recovery mechanisms
-- Email notifications for security events
-- Responsive web interface
-- RESTful API design
-- Comprehensive error handling
-- Rate limiting and security monitoring
+-   Secure user registration and authentication
+-   Encrypted password/credential storage
+-   Multi-factor authentication (TOTP)
+-   Account recovery mechanisms
+-   Email notifications for security events
+-   Responsive web interface
+-   RESTful API design
+-   Comprehensive error handling
+-   Rate limiting and security monitoring
