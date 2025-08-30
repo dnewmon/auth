@@ -56,7 +56,7 @@ SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
 JWT_SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
 
 # Database Configuration
-DATABASE_URL=sqlite:///db/local.db
+DATABASE_URL=sqlite:///local.db
 
 # Mail Configuration (Update these with your actual mail server settings)
 # MAIL_SERVER=smtp.gmail.com
@@ -88,7 +88,7 @@ MODEL_ENCRYPTION_SALT_LENGTH=16
 MODEL_OTP_SECRET_LENGTH=32
 
 # Security Configuration
-MIN_PASSWORD_LENGTH=12
+MIN_PASSWORD_LENGTH=8
 LOG_LEVEL=INFO
 EOF
 
@@ -101,8 +101,7 @@ init_database() {
     echo -e "${YELLOW}Initializing database...${NC}"
     
     # Create db directory if it doesn't exist
-    mkdir -p /app/db
-    touch /app/db/local.db
+    mkdir -p /app/instance
     
     # Run database initialization
     cd /app
@@ -130,7 +129,7 @@ if [ -f "$ENV_FILE_PATH" ]; then
 fi
 
 # Initialize database if this is the first run or if database doesn't exist
-DB_PATH="/app/db/local.db"
+DB_PATH="/app/instance/local.db"
 if [ "$FIRST_RUN" = true ] || [ ! -f "$DB_PATH" ]; then
     init_database
 fi
@@ -153,47 +152,7 @@ fi
 echo -e "${GREEN}Starting Flask application with SSL on port ${FLASK_RUN_PORT:-8443}...${NC}"
 echo -e "${BLUE}Application will be available at: https://localhost:${FLASK_RUN_PORT:-8443}${NC}"
 
-# Update run.py to use SSL if not already configured
+# # Update run.py to use SSL if not already configured
 cd /app
 
-# Start the application with SSL
-exec python -c "
-import os
-import sys
-from app import create_app
-
-env_name = os.getenv('FLASK_ENV', 'production')
-app = create_app(env_name)
-
-if __name__ == '__main__':
-    import logging
-    import ssl
-    
-    # Set up logging
-    console_handler = logging.StreamHandler(stream=sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(
-        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    )
-    logging.root.addHandler(console_handler)
-    
-    # Get configuration
-    host = os.getenv('FLASK_RUN_HOST', '0.0.0.0')
-    port = int(os.getenv('FLASK_RUN_PORT', 8443))
-    ssl_cert = os.getenv('SSL_CERT_PATH', '/app/ssl/cert.pem')
-    ssl_key = os.getenv('SSL_KEY_PATH', '/app/ssl/key.pem')
-    
-    # Create SSL context
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_context.load_cert_chain(ssl_cert, ssl_key)
-    
-    print(f'Starting server on https://{host}:{port}')
-    
-    # Start the Flask app with SSL
-    app.run(
-        host=host,
-        port=port,
-        ssl_context=ssl_context,
-        debug=False
-    )
-"
+exec python run-ssl.py

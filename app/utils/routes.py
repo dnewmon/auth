@@ -20,6 +20,13 @@ from .encryption import derive_key, decrypt_data, encrypt_data
 from .. import limiter
 from ..models.config import get_config_value
 
+@utils_bp.route("/health", methods=["GET"])
+def health():
+    """
+    Check if the API is running.
+    """
+    return success_response(message="API is running.")
+
 
 @utils_bp.route("/forgot-password", methods=["POST"])
 @limiter.limit("3 per hour")

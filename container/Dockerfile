@@ -33,8 +33,7 @@ COPY container/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create directories that might be needed
-RUN mkdir -p /app/db /app/ssl && \
-    chown -R appuser:appuser /app
+RUN mkdir -p /app/db /app/ssl
 
 # Configure sudo for appuser (no password required for chown commands)
 RUN echo "appuser ALL=(root) NOPASSWD: /bin/chown" >> /etc/sudoers
