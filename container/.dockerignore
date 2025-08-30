@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local development files
+.env*
+*.log
+
+# Database files (will be mounted as volumes)
+db/
+instance/
+
+# SSL certificates (will be mounted as volumes)
+ssl/
+
+# Coverage and testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Node.js (UI directory)
+ui/node_modules/
+ui/dist/
+ui/.vite/
+
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+
+# Documentation that's not needed in container
+docs/
+*.md
+!README.md
+
+# Other
+.env.example

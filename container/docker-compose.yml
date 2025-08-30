@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  auth-app:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile
+    ports:
+      - "8443:8443"
+    environment:
+      # Flask configuration
+      - FLASK_ENV=production
+      - FLASK_RUN_HOST=0.0.0.0
+      - FLASK_RUN_PORT=8443
+      # SSL configuration
+      - SSL_CERT_PATH=/app/ssl/cert.pem
+      - SSL_KEY_PATH=/app/ssl/key.pem
+      # Environment file path (can be overridden)
+      - ENV_FILE_PATH=${ENV_FILE_PATH:-/app/config/.env}
+    volumes:
+      # Environment file volume mount
+      - ${ENV_FILE_PATH:-./docker-volumes/config}:/app/config
+      # Database volume mount
+      - ${DB_VOLUME_PATH:-./docker-volumes/db}:/app/db
+      # SSL certificates volume mount
+      - ${SSL_VOLUME_PATH:-./docker-volumes/ssl}:/app/ssl
+      # Optional: Instance volume for additional config
+      - ${INSTANCE_VOLUME_PATH:-./docker-volumes/instance}:/app/instance
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:8443/api/utils/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  config:
+    driver: local
+  db:
+    driver: local  
+  ssl:
+    driver: local
+  instance:
+    driver: local
