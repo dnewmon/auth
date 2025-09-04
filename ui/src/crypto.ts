@@ -61,7 +61,7 @@ async function deriveKey(password: string, salt: Uint8Array, iterations: number 
     return await crypto.subtle.deriveKey(
         {
             name: 'PBKDF2',
-            salt: salt,
+            salt: salt as BufferSource,
             iterations: iterations,
             hash: 'SHA-256',
         },
@@ -139,10 +139,10 @@ export async function decryptAndUnpackage(binaryString: string, password: string
         const decryptedBuffer = await crypto.subtle.decrypt(
             {
                 name: 'AES-GCM',
-                iv: encryptedPackage.iv,
+                iv: encryptedPackage.iv as BufferSource,
             },
             symmetricKey,
-            encryptedPackage.encryptedData
+            encryptedPackage.encryptedData as BufferSource
         );
 
         // Convert back to string
@@ -244,7 +244,8 @@ function binaryStringToPackage(binaryString: string): EncryptedPackage {
  */
 function readComponent(buffer: ArrayBuffer, view: DataView, offset: number): Uint8Array {
     const length = view.getUint32(offset, false);
-    return new Uint8Array(buffer, offset + 4, length);
+    const sourceArray = new Uint8Array(buffer, offset + 4, length);
+    return new Uint8Array(sourceArray);
 }
 
 /**
