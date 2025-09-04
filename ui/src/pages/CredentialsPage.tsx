@@ -127,7 +127,7 @@ export default function CredentialsPage() {
         if (searchTermForAudit) {
             handleAudit({
                 master_password: masterPassword,
-                search_term: searchTermForAudit
+                search_term: searchTermForAudit,
             });
         }
     };
@@ -148,8 +148,8 @@ export default function CredentialsPage() {
     // Handle search - use audit results if in audit mode, otherwise use regular search
     const displayCredentials = isAuditMode ? auditResults : credentials;
     const searchTermLower = searchTerm.toLowerCase();
-    const filteredCredentials = isAuditMode 
-        ? auditResults  // Show audit results as-is (already filtered by password content)
+    const filteredCredentials = isAuditMode
+        ? auditResults // Show audit results as-is (already filtered by password content)
         : displayCredentials?.filter((cred) => JSON.stringify(cred).toLocaleLowerCase().includes(searchTermLower));
 
     // Handle pagination
@@ -218,13 +218,13 @@ export default function CredentialsPage() {
             <MasterPasswordRequired>
                 {/* Search Bar */}
                 <Row className="mb-4">
-                    <Col md={12} className="d-flex gap-2 justify-content-between align-items-center">
+                    <Col md={12} className="d-flex gap-2 flex-wrap justify-content-between align-items-center">
                         <div className="position-relative flex-grow-1">
-                            <Form.Control 
-                                type={isAuditMode && !showSearchTerm ? "password" : "text"} 
-                                placeholder="Search credentials or enter text to audit passwords..." 
-                                value={searchTerm} 
-                                onChange={handleSearchTermChange} 
+                            <Form.Control
+                                type={isAuditMode && !showSearchTerm ? 'password' : 'text'}
+                                placeholder="Search credentials or enter text to audit passwords..."
+                                value={searchTerm}
+                                onChange={handleSearchTermChange}
                             />
                             {isAuditMode && searchTerm && (
                                 <Button
@@ -233,7 +233,7 @@ export default function CredentialsPage() {
                                     onClick={() => setShowSearchTerm(!showSearchTerm)}
                                     className="position-absolute top-50 translate-middle-y text-muted"
                                     style={{ border: 'none', background: 'none', right: searchTerm ? '2.5rem' : '0.5rem' }}
-                                    title={showSearchTerm ? "Hide search term" : "Show search term"}
+                                    title={showSearchTerm ? 'Hide search term' : 'Show search term'}
                                 >
                                     {showSearchTerm ? <EyeSlash size={16} /> : <Eye size={16} />}
                                 </Button>
@@ -260,12 +260,12 @@ export default function CredentialsPage() {
                                     </Button>
                                 }
                             >
-                                <Button 
-                                    variant="outline-info" 
-                                    onClick={handleAuditClick} 
+                                <Button
+                                    variant="outline-info"
+                                    onClick={handleAuditClick}
                                     disabled={!verificationStatus.verified || auditState === ApiState.Loading || !searchTerm.trim()}
                                     className="text-nowrap"
-                                    title={!searchTerm.trim() ? "Enter a search term to audit passwords" : "Search for credentials containing this text in their passwords"}
+                                    title={!searchTerm.trim() ? 'Enter a search term to audit passwords' : 'Search for credentials containing this text in their passwords'}
                                 >
                                     Audit Passwords
                                 </Button>
@@ -290,9 +290,9 @@ export default function CredentialsPage() {
                 {isAuditMode && auditResults && (
                     <div className="alert alert-info mb-3">
                         <strong>Password Audit Results:</strong> Found {auditResults.length} credential(s) with passwords containing your query
-                        <Button 
-                            variant="link" 
-                            size="sm" 
+                        <Button
+                            variant="link"
+                            size="sm"
                             onClick={() => {
                                 setIsAuditMode(false);
                                 setAuditResults(null);
