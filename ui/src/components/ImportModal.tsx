@@ -62,6 +62,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ show, onHide, onImport
         }
     };
 
+    const extractUrlFromText = (text: string): string | null => {
+        // Regular expression to match URLs (http, https, ftp, and common patterns)
+        const urlRegex = /(https?:\/\/[^\s]+|ftp:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/gi;
+        const matches = text.match(urlRegex);
+        return matches ? matches[0] : null;
+    };
+
     const handleImport = async () => {
         if (!fileContent.length) {
             setError('No data to import');
@@ -77,6 +84,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({ show, onHide, onImport
                         (credential as any)[targetField] = item[sourceField];
                     }
                 });
+
+                // If service_url is not mapped but notes is mapped, try to extract URL from notes
+                if (!credential.service_url && credential.notes) {
+                    const extractedUrl = extractUrlFromText(credential.notes);
+                    if (extractedUrl) {
+                        credential.service_url = extractedUrl;
+                    }
+                }
+
                 return credential as CredentialData;
             });
 
