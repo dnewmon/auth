@@ -24,8 +24,8 @@ def verify_master_password():
         return error_response("Master password is required.", 400)
 
     try:
-        MasterVerificationManager.verify_and_store(data["master_password"])
-        return success_response(message="Master password verified.")
+        session_token = MasterVerificationManager.verify_and_store(data["master_password"])
+        return success_response({"message": "Master password verified.", "session_token": session_token})
     except ValueError:
         return error_response("Invalid master password.", 401)
 
@@ -51,17 +51,16 @@ def create_credential():
         return error_response("Master password verification required.", 401)
 
     data = request.get_json()
-    if not data or not all(k in data for k in ("service_name", "username", "password")):
-        return error_response("Missing required fields: service_name, username, password", 400)
+    if not data or not all(k in data for k in ("service_name", "username", "password", "session_token")):
+        return error_response("Missing required fields: service_name, username, password, session_token", 400)
 
     try:
-        # Get master encryption key - the master password was already verified
-        # by the session verification, so we can use the master key directly
-        master_key = current_user.get_master_key(data["master_password"])
+        # Get master encryption key using session token
+        master_key = MasterVerificationManager.get_master_key_from_session(data["session_token"])
         encrypted_pw = encrypt_data(master_key, data["password"])
     except ValueError as e:
         logger.error(f"Error retrieving master key: {e}", exc_info=True)
-        return error_response("Invalid master password. Please verify your password again.", 401)
+        return error_response("Invalid session token. Please verify your password again.", 401)
     except Exception as e:
         logger.error(f"Error encrypting password for new credential: {e}", exc_info=True)
         return error_response("Failed to encrypt password securely. Please try again.", 500)
@@ -114,20 +113,20 @@ def list_credentials():
 def get_credential(credential_id):
     """Get a specific credential's details including decrypted password."""
     data = request.get_json()
-    if not data or "master_password" not in data:
-        return error_response("Master password required.", 400)
+    if not data or "session_token" not in data:
+        return error_response("Session token required.", 400)
 
     credential = Credential.query.get_or_404(credential_id)
     if credential.user_id != current_user.id:
         return error_response("You do not have permission to access this credential.", 403)
 
     try:
-        # Get master encryption key using provided password
-        master_key = current_user.get_master_key(data["master_password"])
+        # Get master encryption key using session token
+        master_key = MasterVerificationManager.get_master_key_from_session(data["session_token"])
         decrypted_password = decrypt_data(master_key, credential.encrypted_password)
     except ValueError as e:
-        logger.error(f"Invalid master password: {e}")
-        return error_response("Invalid master password.", 401)
+        logger.error(f"Invalid session token: {e}")
+        return error_response("Invalid session token. Please verify your password again.", 401)
     except Exception as e:
         logger.error(f"Error decrypting credential {credential.id}: {e}", exc_info=True)
         return error_response("Failed to decrypt credential.", 500)
@@ -156,8 +155,8 @@ def update_credential(credential_id):
     if not data:
         return error_response("No update data provided.", 400)
 
-    if "master_password" not in data:
-        return error_response("Master password required.", 400)
+    if "session_token" not in data:
+        return error_response("Session token required.", 400)
 
     credential = Credential.query.get_or_404(credential_id)
     if credential.user_id != current_user.id:
@@ -166,11 +165,11 @@ def update_credential(credential_id):
     # Handle password updates
     if "password" in data:
         try:
-            master_key = current_user.get_master_key(data["master_password"])
+            master_key = MasterVerificationManager.get_master_key_from_session(data["session_token"])
             credential.encrypted_password = encrypt_data(master_key, data["password"])
         except ValueError as e:
-            logger.error(f"Invalid master password: {e}")
-            return error_response("Invalid master password.", 401)
+            logger.error(f"Invalid session token: {e}")
+            return error_response("Invalid session token. Please verify your password again.", 401)
         except Exception as e:
             logger.error(f"Error encrypting new password for credential {credential.id}: {e}", exc_info=True)
             return error_response("Failed to encrypt new password securely. Please try again.", 500)
@@ -221,20 +220,20 @@ def update_credential(credential_id):
 def get_credential_password(credential_id):
     """Get only the decrypted password for a specific credential."""
     data = request.get_json()
-    if not data or "master_password" not in data:
-        return error_response("Master password required.", 400)
+    if not data or "session_token" not in data:
+        return error_response("Session token required.", 400)
 
     credential = Credential.query.get_or_404(credential_id)
     if credential.user_id != current_user.id:
         return error_response("You do not have permission to access this credential.", 403)
 
     try:
-        # Get master encryption key using provided password
-        master_key = current_user.get_master_key(data["master_password"])
+        # Get master encryption key using session token
+        master_key = MasterVerificationManager.get_master_key_from_session(data["session_token"])
         decrypted_password = decrypt_data(master_key, credential.encrypted_password)
     except ValueError as e:
-        logger.error(f"Invalid master password: {e}")
-        return error_response("Invalid master password.", 401)
+        logger.error(f"Invalid session token: {e}")
+        return error_response("Invalid session token. Please verify your password again.", 401)
     except Exception as e:
         logger.error(f"Error decrypting credential {credential.id}: {e}", exc_info=True)
         return error_response("Failed to decrypt credential.", 500)
@@ -268,22 +267,22 @@ def delete_credential(credential_id):
 def audit_passwords():
     """Audit credential passwords by searching decrypted passwords for a search term."""
     data = request.get_json()
-    if not data or not all(k in data for k in ("master_password", "search_term")):
-        return error_response("Master password and search term are required.", 400)
+    if not data or not all(k in data for k in ("session_token", "search_term")):
+        return error_response("Session token and search term are required.", 400)
 
     search_term = data["search_term"].lower().strip()
     if not search_term:
         return error_response("Search term cannot be empty.", 400)
 
     try:
-        # Get master encryption key using provided password
-        master_key = current_user.get_master_key(data["master_password"])
+        # Get master encryption key using session token
+        master_key = MasterVerificationManager.get_master_key_from_session(data["session_token"])
     except ValueError as e:
-        logger.error(f"Invalid master password during audit: {e}")
-        return error_response("Invalid master password.", 401)
+        logger.error(f"Invalid session token during audit: {e}")
+        return error_response("Invalid session token. Please verify your password again.", 401)
     except Exception as e:
         logger.error(f"Error retrieving master key for audit: {e}", exc_info=True)
-        return error_response("Failed to verify master password.", 500)
+        return error_response("Failed to verify session token.", 500)
 
     # Get all user's credentials
     user_creds = Credential.query.filter_by(user_id=current_user.id).order_by(Credential.category).order_by(Credential.service_name).all()

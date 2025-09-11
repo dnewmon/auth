@@ -6,8 +6,8 @@ import { decryptAndUnpackage, encryptAndPackage, generateRandomPassword } from '
 interface AppContextType {
     username: string | null;
     setUsername: (username: string | null) => void;
-    masterPassword: string;
-    setMasterPassword: (password: string) => void;
+    sessionToken: string;
+    setSessionToken: (token: string) => void;
     verificationStatus: MasterVerificationData;
     setVerificationStatus: (status: MasterVerificationData) => void;
 }
@@ -15,8 +15,8 @@ interface AppContextType {
 const AppContext = createContext<AppContextType>({
     username: null,
     setUsername: () => {},
-    masterPassword: '',
-    setMasterPassword: () => {},
+    sessionToken: '',
+    setSessionToken: () => {},
     verificationStatus: {
         verified: false,
         expires_at: null,
@@ -29,12 +29,12 @@ export const useAppContext = () => useContext(AppContext);
 
 export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [username, setUsername] = useState<string | null>(null);
-    const [masterPassword, setMasterPassword] = useState<string>('');
+    const [sessionToken, setSessionToken] = useState<string>('');
     const [verificationKey, setVerificationKey] = useSessionStorage<string>('verification-key', '');
     const [verificationData, setVerificationData] = useSessionStorage<string>('verification-data', '');
 
-    const updateMasterPassword = (password: string) => {
-        setMasterPassword(password);
+    const updateSessionToken = (password: string) => {
+        setSessionToken(password);
 
         if (password !== '') {
             const verificationKey = generateRandomPassword();
@@ -49,19 +49,19 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     };
 
-    const readMasterPassword = () => {
+    const readSessionToken = () => {
         if (verificationData !== '' && verificationKey !== '') {
             decryptAndUnpackage(verificationData, verificationKey).then((password) => {
-                setMasterPassword(password.plaintext);
+                setSessionToken(password.plaintext);
             });
         }
     };
 
     useEffect(() => {
-        if (masterPassword === '' && verificationData !== '' && verificationKey !== '') {
-            readMasterPassword();
+        if (sessionToken === '' && verificationData !== '' && verificationKey !== '') {
+            readSessionToken();
         }
-    }, [masterPassword, verificationData, verificationKey]);
+    }, [sessionToken, verificationData, verificationKey]);
 
     const [verificationStatus, setVerificationStatus] = useState<MasterVerificationData>({
         verified: false,
@@ -73,7 +73,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setVerificationStatus(status);
 
         if (!status.verified) {
-            updateMasterPassword('');
+            setSessionToken('');
         }
     };
 
@@ -82,8 +82,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             value={{
                 username,
                 setUsername,
-                masterPassword,
-                setMasterPassword: updateMasterPassword,
+                sessionToken,
+                setSessionToken: updateSessionToken,
                 verificationStatus,
                 setVerificationStatus: updateVerificationStatus,
             }}

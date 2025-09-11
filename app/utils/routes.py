@@ -249,8 +249,8 @@ def export_credentials():
     if not data:
         return error_response("Request data is required.", 400)
 
-    if not data.get("master_password"):
-        return error_response("Master password is required.", 400)
+    if not data.get("session_token"):
+        return error_response("Session token is required.", 400)
 
     if not data.get("export_password"):
         return error_response("Export password is required to protect the ZIP file.", 400)
@@ -260,11 +260,12 @@ def export_credentials():
         if not credentials:
             return success_response(message="You have no credentials stored to export.")
 
-        # Get master encryption key using password
+        # Get master encryption key using session token
         try:
-            master_key = current_user.get_master_key(data["master_password"])
+            from .master_verification import MasterVerificationManager
+            master_key = MasterVerificationManager.get_master_key_from_session(data["session_token"])
         except ValueError as e:
-            return error_response(str(e), 401)
+            return error_response("Invalid session token. Please verify your password again.", 401)
 
         # Create CSV in memory
         csv_buffer = io.StringIO()
@@ -326,18 +327,19 @@ def import_credentials():
     if not data:
         return error_response("Request data is required.", 400)
 
-    if not data.get("master_password"):
-        return error_response("Master password is required.", 400)
+    if not data.get("session_token"):
+        return error_response("Session token is required.", 400)
 
     if not data.get("credentials"):
         return error_response("Credentials data is required.", 400)
 
     try:
-        # Get master encryption key using password
+        # Get master encryption key using session token
         try:
-            master_key = current_user.get_master_key(data["master_password"])
+            from .master_verification import MasterVerificationManager
+            master_key = MasterVerificationManager.get_master_key_from_session(data["session_token"])
         except ValueError as e:
-            return error_response(str(e), 401)
+            return error_response("Invalid session token. Please verify your password again.", 401)
 
         # Process each credential
         for cred_data in data["credentials"]:

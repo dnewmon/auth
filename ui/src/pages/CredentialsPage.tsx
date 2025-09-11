@@ -16,7 +16,7 @@ const ITEMS_PER_PAGE = 15;
 
 export default function CredentialsPage() {
     const navigate = useNavigate();
-    const { masterPassword, verificationStatus } = useAppContext();
+    const { sessionToken, verificationStatus } = useAppContext();
     const [sessionSearchTerm, setSessionSearchTerm] = useSessionStorage('search-term', '');
     const [sessionCurrentPage, setSessionCurrentPage] = useSessionStorage('current-page', 1);
     const [searchTerm, setSearchTerm] = useState(sessionSearchTerm);
@@ -63,7 +63,7 @@ export default function CredentialsPage() {
 
     // Export credentials
     const [handleExport, , exportState, exportError] = useApi(async (exportPassword: string) => {
-        const blob = await UtilsService.exportCredentials(masterPassword, exportPassword);
+        const blob = await UtilsService.exportCredentials(sessionToken, exportPassword);
 
         // Create a download link
         const url = window.URL.createObjectURL(blob);
@@ -80,14 +80,14 @@ export default function CredentialsPage() {
     const [handleImport, , importState, importError] = useApi(async (data: ImportCredentialsRequest) => {
         await UtilsService.importCredentials({
             ...data,
-            master_password: masterPassword,
+            session_token: sessionToken,
         });
         loadCredentials(); // Reload the list
     });
 
     // Copy password to clipboard
     const [handleCopyPassword, , copyState, copyError] = useApi(async (credentialId: number) => {
-        const password = await CredentialsService.getPassword(credentialId, masterPassword);
+        const password = await CredentialsService.getPassword(credentialId, sessionToken);
         await copyToClipboard(password);
     });
 
@@ -126,7 +126,7 @@ export default function CredentialsPage() {
         const searchTermForAudit = searchTerm.trim();
         if (searchTermForAudit) {
             handleAudit({
-                master_password: masterPassword,
+                session_token: sessionToken,
                 search_term: searchTermForAudit,
             });
         }

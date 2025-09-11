@@ -9,7 +9,7 @@ interface CredentialModalProps {
     onHide: () => void;
     mode: 'create' | 'view' | 'edit';
     credential?: CredentialData;
-    onSave?: (data: Omit<CredentialRequest, 'master_password'>) => Promise<void>;
+    onSave?: (data: Omit<CredentialRequest, 'session_token'>) => Promise<void>;
     createState: ApiState;
     updateState: ApiState;
     createError: Nullable<any>;

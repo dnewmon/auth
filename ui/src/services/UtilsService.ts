@@ -20,12 +20,12 @@ export interface RecoverWithKeyRequest {
 
 export interface ExportCredentialsRequest {
     export_password: string;
-    master_password: string;
+    session_token: string;
 }
 
 export interface ImportCredentialsRequest {
     credentials: CredentialData[];
-    master_password: string;
+    session_token: string;
 }
 
 // Response data interfaces
@@ -78,11 +78,11 @@ export class UtilsService {
         return response.data.data;
     }
 
-    static async exportCredentials(masterPassword: string, exportPassword: string): Promise<Blob> {
+    static async exportCredentials(sessionToken: string, exportPassword: string): Promise<Blob> {
         const response = await axios.post(
             `${this.BASE_URL}/export`,
             {
-                master_password: masterPassword,
+                session_token: sessionToken,
                 export_password: exportPassword,
             },
             {

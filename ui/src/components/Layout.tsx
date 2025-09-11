@@ -9,7 +9,7 @@ import { ApiErrorFallback, ApiState, ApiSuspense, useApi, useDebouncedEffect, us
 import { useState } from 'react';
 
 function LayoutContent() {
-    const { username, setUsername, setMasterPassword, verificationStatus, setVerificationStatus } = useAppContext();
+    const { username, setUsername, setSessionToken, verificationStatus, setVerificationStatus } = useAppContext();
     const navigate = useNavigate();
     const [showMasterPasswordModal, setShowMasterPasswordModal] = useState(false);
 
@@ -37,8 +37,8 @@ function LayoutContent() {
 
     // Verify master password
     const [verifyMasterPassword] = useApi(async (password: string) => {
-        await CredentialsService.verifyMasterPassword(password);
-        setMasterPassword(password);
+        const result = await CredentialsService.verifyMasterPassword(password);
+        setSessionToken(result.session_token);
         checkVerificationStatus();
     });
 

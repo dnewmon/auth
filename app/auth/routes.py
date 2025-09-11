@@ -13,7 +13,7 @@ from .. import limiter
 from ..models.config import get_config_value
 
 
-def _complete_user_login(user, password):
+def _complete_user_login(user, password) -> str:
     """Complete user login and initialize master verification."""
     login_user(user)
     # Set session version
@@ -25,7 +25,7 @@ def _complete_user_login(user, password):
 
     # Initialize master verification with the login password
     try:
-        MasterVerificationManager.verify_and_store(password)
+        return MasterVerificationManager.verify_and_store(password)
     except ValueError:
         # This shouldn't happen as password was already verified, but log it
         current_app.logger.warning(f"Failed to initialize master verification for user {user.id}")
@@ -161,12 +161,12 @@ def login():
                 return error_response("Failed to send verification code. Please try again.", 500)
         else:
             # No MFA enabled, proceed with login
-            _complete_user_login(user, password)
+            session_token = _complete_user_login(user, password)
 
             current_app.logger.info(f"User '{username}' logged in successfully (no MFA).")
 
             # Return success, no tokens needed for session-based auth
-            return success_response({"message": "Login successful"})
+            return success_response({"message": "Login successful", "session_token": session_token})
     else:
         current_app.logger.warning(f"Failed login attempt for username: '{username}'.")
         # Generic error to prevent user enumeration
@@ -201,9 +201,11 @@ def login_verify_otp():
         password = session.pop("otp_user_password", None)
         session.modified = True
 
+        session_token = None
+
         # Complete login with master verification
         if password:
-            _complete_user_login(user, password)
+            session_token = _complete_user_login(user, password)
         else:
             # Fallback if password not in session
             login_user(user)
@@ -214,7 +216,7 @@ def login_verify_otp():
         current_app.logger.info(f"User ID '{user_id}' successfully authenticated with OTP.")
 
         # Return success, no tokens needed for session-based auth
-        return success_response({"message": "Login successful"})
+        return success_response({"message": "Login successful", "session_token": session_token})
     else:
         # Invalid OTP token
         current_app.logger.warning(f"Invalid OTP token provided for user ID '{user_id}'.")
@@ -251,10 +253,11 @@ def login_verify_email():
     session.pop(get_config_value("SESSION_KEY_EMAIL_MFA_USER_ID"), None)
     password = session.pop("email_mfa_user_password", None)
     session.modified = True
+    session_token = None
 
     # Complete login with master verification
     if password:
-        _complete_user_login(user, password)
+        session_token = _complete_user_login(user, password)
     else:
         # Fallback if password not in session
         login_user(user)
@@ -269,7 +272,7 @@ def login_verify_email():
     current_app.logger.info(f"User ID '{user_id}' successfully authenticated with email MFA.")
 
     # Return success, no tokens needed for session-based auth
-    return success_response({"message": "Login successful"})
+    return success_response({"message": "Login successful", "session_token": session_token})
 
 
 @auth_bp.route("/login/switch-to-email", methods=["POST"])

@@ -12,13 +12,13 @@ import { copyToClipboard } from '../helpers';
 export default function CredentialViewPage() {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
-    const { masterPassword, verificationStatus } = useAppContext();
+    const { sessionToken, verificationStatus } = useAppContext();
 
     const [showPassword, setShowPassword] = useState(false);
     const [showToast, setShowToast] = useState(false);
 
     const [getCredential, credential, getState, getError] = useApi(async (credId: number) => {
-        const cred = await CredentialsService.getById(credId, masterPassword);
+        const cred = await CredentialsService.getById(credId, sessionToken);
         return cred;
     });
 
@@ -26,7 +26,6 @@ export default function CredentialViewPage() {
         if (id && getState === ApiState.NotLoaded && verificationStatus.verified) {
             const credId = parseInt(id, 10);
             if (!isNaN(credId)) {
-                console.log('getCredential', credId);
                 getCredential(credId);
             } else {
                 navigate('/credentials');

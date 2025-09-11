@@ -13,7 +13,7 @@ interface LoginForm {
 
 export default function LoginPage() {
     const navigate = useNavigate();
-    const { setUsername, setMasterPassword } = useAppContext();
+    const { setUsername, setSessionToken } = useAppContext();
     const [formData, setFormData] = useState<LoginForm>({
         username: '',
         password: '',
@@ -28,7 +28,6 @@ export default function LoginPage() {
     const refreshMasterVerificationStatus = async () => {
         try {
             await CredentialsService.getMasterVerificationStatus();
-            console.log('Master verification status refreshed');
         } catch (error) {
             console.warn('Failed to refresh master verification status:', error);
         }
@@ -49,11 +48,12 @@ export default function LoginPage() {
                 go_home = false;
                 setShowEmailMfaForm(true);
             }
+        } else {
+            setSessionToken(response.session_token);
         }
 
         if (go_home) {
             setUsername(formData.username);
-            setMasterPassword(formData.password);
             await refreshMasterVerificationStatus();
             navigate('/');
         }
@@ -62,6 +62,7 @@ export default function LoginPage() {
     const [handleOtpVerify, , otpState, otpError] = useApi(async () => {
         const response = await AuthService.verifyOtp({ otp_token: otpToken });
         setUsername(formData.username);
+        setSessionToken(response.session_token);
         await refreshMasterVerificationStatus();
         navigate('/');
         return response;
@@ -70,6 +71,7 @@ export default function LoginPage() {
     const [handleEmailMfaVerify, , emailMfaState, emailMfaError] = useApi(async () => {
         const response = await AuthService.verifyEmailMfa({ verification_code: emailMfaCode });
         setUsername(formData.username);
+        setSessionToken(response.session_token);
         await refreshMasterVerificationStatus();
         navigate('/');
         return response;

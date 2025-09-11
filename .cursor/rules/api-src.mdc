@@ -1,8 +1,0 @@
----
-description: 
-globs: **/*.py
-alwaysApply: false
----
-Code Patterns:
-- Use snake case for all variables, functions, and methods
-- Use `datetime.now(timezone.utc)` not the deprecated `datetime.utcnow()` method

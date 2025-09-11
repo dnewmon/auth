@@ -93,7 +93,7 @@ class TestVerifyMasterPassword:
                 assert response.status_code == 200
                 data = json.loads(response.data)
                 assert data['status'] == "success"
-                assert data['message'] == "Master password verified."
+                assert data['data']['message'] == "Master password verified."
 
     def test_verify_master_password_invalid(self, client, test_user):
         """Test verification with invalid master password."""
@@ -224,12 +224,13 @@ class TestCreateCredential:
         """Test successful credential creation."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
-                # First verify master password
-                client.post(
+                # First verify master password to get session token
+                verify_response = client.post(
                     '/api/credentials/verify-master',
                     json={'master_password': 'testpassword'},
                     content_type='application/json'
                 )
+                session_token = json.loads(verify_response.data)['data']['session_token']
                 
                 credential_data = {
                     'service_name': 'New Service',
@@ -238,7 +239,7 @@ class TestCreateCredential:
                     'password': 'newpassword',
                     'notes': 'New notes',
                     'category': 'personal',
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 
                 response = client.post(
@@ -263,7 +264,7 @@ class TestCreateCredential:
                     'service_name': 'New Service',
                     'username': 'newuser',
                     'password': 'newpassword',
-                    'master_password': 'testpassword'
+                    'session_token': 'invalid_token'
                 }
                 
                 response = client.post(
@@ -288,11 +289,19 @@ class TestCreateCredential:
                     content_type='application/json'
                 )
                 
+                # First get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 credential_data = {
                     'service_name': 'New Service',
                     'username': 'newuser',
                     # Missing password
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 
                 response = client.post(
@@ -304,7 +313,7 @@ class TestCreateCredential:
                 assert response.status_code == 400
                 data = json.loads(response.data)
                 assert data['status'] == "error"
-                assert "Missing required fields" in data['message']
+                assert "Missing required fields: service_name, username, password, session_token" in data['message']
 
     def test_create_credential_unauthenticated(self, client, test_user):
         """Test credential creation without authentication."""
@@ -416,9 +425,17 @@ class TestGetCredential:
         """Test successful credential retrieval."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
+                # First verify master password to get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 response = client.post(
                     f'/api/credentials/{test_credential.id}',
-                    json={'master_password': 'testpassword'},
+                    json={'session_token': session_token},
                     content_type='application/json'
                 )
                 
@@ -435,22 +452,22 @@ class TestGetCredential:
                 assert credential['category'] == 'work'
 
     def test_get_credential_invalid_master_password(self, client, test_user, test_credential):
-        """Test credential retrieval with invalid master password."""
+        """Test credential retrieval with invalid session token."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
                 response = client.post(
                     f'/api/credentials/{test_credential.id}',
-                    json={'master_password': 'wrongpassword'},
+                    json={'session_token': 'invalid_token'},
                     content_type='application/json'
                 )
                 
                 assert response.status_code == 401
                 data = json.loads(response.data)
                 assert data['status'] == "error"
-                assert data['message'] == "Invalid master password."
+                assert data['message'] == "Invalid session token. Please verify your password again."
 
     def test_get_credential_missing_master_password(self, client, test_user, test_credential):
-        """Test credential retrieval without master password."""
+        """Test credential retrieval without session token."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
                 response = client.post(
@@ -462,15 +479,23 @@ class TestGetCredential:
                 assert response.status_code == 400
                 data = json.loads(response.data)
                 assert data['status'] == "error"
-                assert data['message'] == "Master password required."
+                assert data['message'] == "Session token required."
 
     def test_get_credential_not_found(self, client, test_user):
         """Test retrieval of non-existent credential."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
+                # First verify master password to get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 response = client.post(
                     '/api/credentials/99999',
-                    json={'master_password': 'testpassword'},
+                    json={'session_token': session_token},
                     content_type='application/json'
                 )
                 
@@ -510,9 +535,17 @@ class TestGetCredential:
         # Test that test_user cannot access other user's credential
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
+                # First verify master password to get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 response = client.post(
                     f'/api/credentials/{other_credential.id}',
-                    json={'master_password': 'testpassword'},
+                    json={'session_token': session_token},
                     content_type='application/json'
                 )
                 
@@ -541,13 +574,21 @@ class TestUpdateCredential:
         """Test successful credential update."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
+                # First verify master password to get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 update_data = {
                     'service_name': 'Updated Service',
                     'username': 'updateduser',
                     'password': 'updatedpassword',
                     'notes': 'Updated notes',
                     'category': 'personal',
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 
                 response = client.put(
@@ -567,9 +608,17 @@ class TestUpdateCredential:
         """Test partial credential update."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
+                # First verify master password to get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 update_data = {
                     'service_name': 'Partially Updated Service',
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 
                 response = client.put(
@@ -587,8 +636,16 @@ class TestUpdateCredential:
         """Test update with no actual changes."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
+                # First verify master password to get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 update_data = {
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 
                 response = client.put(
@@ -603,7 +660,7 @@ class TestUpdateCredential:
                 assert data['data']['message'] == "No changes detected"
 
     def test_update_credential_missing_master_password(self, client, test_user, test_credential):
-        """Test credential update without master password."""
+        """Test credential update without session token."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
                 update_data = {
@@ -619,15 +676,23 @@ class TestUpdateCredential:
                 assert response.status_code == 400
                 data = json.loads(response.data)
                 assert data['status'] == "error"
-                assert data['message'] == "Master password required."
+                assert data['message'] == "Session token required."
 
     def test_update_credential_not_found(self, client, test_user):
         """Test update of non-existent credential."""
         with patch('app.credentials.routes.current_user', test_user):
             with patch('flask_login.utils._get_user', return_value=test_user):
+                # First verify master password to get session token
+                verify_response = client.post(
+                    '/api/credentials/verify-master',
+                    json={'master_password': 'testpassword'},
+                    content_type='application/json'
+                )
+                session_token = json.loads(verify_response.data)['data']['session_token']
+                
                 update_data = {
                     'service_name': 'Updated Service',
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 
                 response = client.put(
@@ -804,12 +869,15 @@ class TestIntegration:
                 )
                 assert response.status_code == 200
                 
+                # Get session token for subsequent operations
+                session_token = json.loads(response.data)['data']['session_token']
+                
                 # 2. Create credential
                 credential_data = {
                     'service_name': 'Integration Test Service',
                     'username': 'testuser',
                     'password': 'testpassword123',
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 
                 response = client.post(
@@ -829,7 +897,7 @@ class TestIntegration:
                 # 4. Get credential
                 response = client.post(
                     f'/api/credentials/{credential_id}',
-                    json={'master_password': 'testpassword'},
+                    json={'session_token': session_token},
                     content_type='application/json'
                 )
                 assert response.status_code == 200
@@ -839,7 +907,7 @@ class TestIntegration:
                 # 5. Update credential
                 update_data = {
                     'service_name': 'Updated Integration Service',
-                    'master_password': 'testpassword'
+                    'session_token': session_token
                 }
                 response = client.put(
                     f'/api/credentials/{credential_id}',

@@ -39,10 +39,12 @@ export interface MfaRequiredData {
 
 export interface LoginSuccessData {
     message: string;
+    session_token: string;
 }
 
 export interface OtpVerifyData {
     message: string;
+    session_token: string;
 }
 
 export interface RegisterData {

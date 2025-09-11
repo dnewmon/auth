@@ -98,7 +98,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ show, onHide, onImport
 
             await onImport({
                 credentials,
-                master_password: '', // This will be filled by the parent component
+                session_token: '', // This will be filled by the parent component
             });
             onHide();
         } catch (err) {

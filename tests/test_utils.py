@@ -294,12 +294,13 @@ class TestExportCredentials:
              patch('app.utils.routes.tempfile.NamedTemporaryFile') as mock_temp_file, \
              patch('app.utils.routes.pyminizip.compress') as mock_zip, \
              patch('app.utils.routes.open', mock_open(read_data=b"zip_content")) as mock_file_open, \
-             patch('app.utils.routes.os.unlink') as mock_unlink:
+             patch('app.utils.routes.os.unlink') as mock_unlink, \
+             patch('app.utils.master_verification.MasterVerificationManager') as mock_verification:
             
             # Setup mocks
             mock_current_user.id = 1
             mock_current_user.is_authenticated = True
-            mock_current_user.get_master_key = Mock(return_value="master_key")
+            mock_verification.get_master_key_from_session.return_value = "master_key"
             
             mock_credential = Mock()
             mock_credential.id = 1
@@ -320,7 +321,7 @@ class TestExportCredentials:
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/utils/export',
                                      json={
-                                         "master_password": "master123",
+                                         "session_token": "valid_session_token",
                                          "export_password": "export123"
                                      },
                                      content_type='application/json')
@@ -329,7 +330,7 @@ class TestExportCredentials:
             assert response.content_type == 'application/zip'
 
     def test_export_missing_master_password(self, client):
-        """Test export with missing master password."""
+        """Test export with missing session token."""
         with patch('app.utils.routes.current_user') as mock_current_user:
             mock_current_user.is_authenticated = True
             
@@ -341,7 +342,7 @@ class TestExportCredentials:
             assert response.status_code == 400
             response_data = json.loads(response.data)
             assert response_data["status"] == "error"
-            assert "Master password is required" in response_data["message"]
+            assert "Session token is required" in response_data["message"]
 
     def test_export_missing_export_password(self, client):
         """Test export with missing export password."""
@@ -350,7 +351,7 @@ class TestExportCredentials:
             
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/utils/export',
-                                     json={"master_password": "master123"},
+                                     json={"session_token": "valid_session_token"},
                                      content_type='application/json')
             
             assert response.status_code == 400
@@ -370,7 +371,7 @@ class TestExportCredentials:
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/utils/export',
                                      json={
-                                         "master_password": "master123",
+                                         "session_token": "valid_session_token",
                                          "export_password": "export123"
                                      },
                                      content_type='application/json')
@@ -401,11 +402,12 @@ class TestImportCredentials:
         with patch('app.utils.routes.current_user') as mock_current_user, \
              patch('app.utils.routes.encrypt_data') as mock_encrypt, \
              patch('app.utils.routes.Credential') as mock_credential_model, \
-             patch('app.utils.routes.db.session') as mock_db_session:
+             patch('app.utils.routes.db.session') as mock_db_session, \
+             patch('app.utils.master_verification.MasterVerificationManager') as mock_verification:
             
             mock_current_user.id = 1
             mock_current_user.is_authenticated = True
-            mock_current_user.get_master_key = Mock(return_value="master_key")
+            mock_verification.get_master_key_from_session.return_value = "master_key"
             
             mock_encrypt.return_value = "encrypted_data"
             
@@ -423,7 +425,7 @@ class TestImportCredentials:
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/utils/import',
                                      json={
-                                         "master_password": "master123",
+                                         "session_token": "valid_session_token",
                                          "credentials": credentials_data
                                      },
                                      content_type='application/json')
@@ -434,7 +436,7 @@ class TestImportCredentials:
             assert "Credentials imported successfully" in response_data["message"]
 
     def test_import_missing_master_password(self, client):
-        """Test import with missing master password."""
+        """Test import with missing session token."""
         with patch('app.utils.routes.current_user') as mock_current_user:
             mock_current_user.is_authenticated = True
             
@@ -446,7 +448,7 @@ class TestImportCredentials:
                 assert response.status_code == 400
                 response_data = json.loads(response.data)
                 assert response_data["status"] == "error"
-                assert "Master password is required" in response_data["message"]
+                assert "Session token is required" in response_data["message"]
 
     def test_import_missing_credentials(self, client):
         """Test import with missing credentials data."""
@@ -455,7 +457,7 @@ class TestImportCredentials:
             
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/utils/import',
-                                     json={"master_password": "master123"},
+                                     json={"session_token": "valid_session_token"},
                                      content_type='application/json')
             
             assert response.status_code == 400
@@ -476,16 +478,17 @@ class TestImportCredentials:
         assert response.status_code == 302
 
     def test_import_invalid_master_password(self, client):
-        """Test import with invalid master password."""
-        with patch('app.utils.routes.current_user') as mock_current_user:
+        """Test import with invalid session token."""
+        with patch('app.utils.routes.current_user') as mock_current_user, \
+             patch('app.utils.master_verification.MasterVerificationManager') as mock_verification:
             mock_current_user.id = 1
             mock_current_user.is_authenticated = True
-            mock_current_user.get_master_key = Mock(side_effect=ValueError("Invalid master password"))
+            mock_verification.get_master_key_from_session.side_effect = ValueError("Invalid session token")
             
             with patch('flask_login.utils._get_user', return_value=mock_current_user):
                 response = client.post('/api/utils/import',
                                      json={
-                                         "master_password": "wrongpassword",
+                                         "session_token": "invalid_token",
                                          "credentials": [{"service_name": "test"}]
                                      },
                                      content_type='application/json')
@@ -525,8 +528,8 @@ class TestRoutesIntegration:
     def test_authenticated_routes_require_login(self, client):
         """Test that authenticated routes require user login."""
         authenticated_endpoints = [
-            ('/api/utils/export', {"master_password": "test", "export_password": "test"}),
-            ('/api/utils/import', {"master_password": "test", "credentials": []})
+            ('/api/utils/export', {"session_token": "test", "export_password": "test"}),
+            ('/api/utils/import', {"session_token": "test", "credentials": []})
         ]
         
         for endpoint, data in authenticated_endpoints:

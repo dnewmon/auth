@@ -35,7 +35,7 @@ const generatePassword = (length: number = 20): string => {
 
 export default function CredentialCreatePage() {
     const navigate = useNavigate();
-    const { masterPassword } = useAppContext();
+    const { sessionToken } = useAppContext();
 
     const [serviceName, setServiceName] = useState('');
     const [serviceUrl, setServiceUrl] = useState('');
@@ -60,7 +60,7 @@ export default function CredentialCreatePage() {
             password,
             notes: notes || undefined,
             category: category || undefined,
-            master_password: masterPassword,
+            session_token: sessionToken,
         });
     };
 

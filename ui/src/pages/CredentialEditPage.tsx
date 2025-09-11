@@ -38,7 +38,7 @@ const generatePassword = (length: number = 20): string => {
 export default function CredentialEditPage() {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
-    const { masterPassword, verificationStatus } = useAppContext();
+    const { sessionToken, verificationStatus } = useAppContext();
 
     const [serviceName, setServiceName] = useState('');
     const [serviceUrl, setServiceUrl] = useState('');
@@ -52,7 +52,7 @@ export default function CredentialEditPage() {
 
     const [getCredential, credential, getState, getError] = useApi(
         async (credId: number) => {
-            const cred = await CredentialsService.getById(credId, masterPassword);
+            const cred = await CredentialsService.getById(credId, sessionToken);
             return cred;
         },
         (cred) => {
@@ -85,7 +85,6 @@ export default function CredentialEditPage() {
         if (id && getState === ApiState.NotLoaded && verificationStatus.verified) {
             const credId = parseInt(id, 10);
             if (!isNaN(credId)) {
-                console.log('getCredential', credId);
                 getCredential(credId);
             } else {
                 navigate('/credentials');
@@ -102,7 +101,7 @@ export default function CredentialEditPage() {
             password,
             notes: notes || undefined,
             category: category || undefined,
-            master_password: masterPassword,
+            session_token: sessionToken,
         });
     };
 
@@ -233,7 +232,11 @@ export default function CredentialEditPage() {
                                                 </ApiSuspense>
                                             </div>
                                             <div className="d-flex gap-2">
-                                                <Button variant="secondary" onClick={() => navigate('/credentials')} disabled={updateState === ApiState.Loading || deleteState === ApiState.Loading}>
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => navigate('/credentials')}
+                                                    disabled={updateState === ApiState.Loading || deleteState === ApiState.Loading}
+                                                >
                                                     Cancel
                                                 </Button>
                                                 <ApiSuspense
@@ -259,12 +262,7 @@ export default function CredentialEditPage() {
             </MasterPasswordRequired>
             {/* Delete Confirmation Modal */}
             {credential && (
-                <DeleteConfirmationModal
-                    show={showDeleteModal}
-                    onHide={() => setShowDeleteModal(false)}
-                    onConfirm={handleDeleteConfirm}
-                    itemName={credential.service_name}
-                />
+                <DeleteConfirmationModal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} onConfirm={handleDeleteConfirm} itemName={credential.service_name} />
             )}
         </Container>
     );

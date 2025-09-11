@@ -3,7 +3,7 @@ import { SuccessResponse } from './Responses';
 
 // Request interfaces
 export interface CredentialRequest {
-    master_password: string;
+    session_token: string;
     service_name: string;
     service_url?: string;
     username: string;
@@ -13,7 +13,7 @@ export interface CredentialRequest {
 }
 
 export interface CredentialUpdateRequest {
-    master_password: string;
+    session_token: string;
     service_name?: string;
     service_url?: string;
     username?: string;
@@ -23,7 +23,7 @@ export interface CredentialUpdateRequest {
 }
 
 export interface GetCredentialRequest {
-    master_password: string;
+    session_token: string;
 }
 
 export interface VerifyMasterRequest {
@@ -31,7 +31,7 @@ export interface VerifyMasterRequest {
 }
 
 export interface AuditCredentialsRequest {
-    master_password: string;
+    session_token: string;
     search_term: string;
 }
 
@@ -64,6 +64,7 @@ export interface MasterVerificationData {
 
 export interface VerifyMasterData {
     message: string;
+    session_token: string;
 }
 
 export interface DeleteCredentialData {
@@ -78,14 +79,14 @@ export interface PasswordData {
 export interface CredentialResponse extends SuccessResponse<CredentialData> {}
 export interface CredentialsResponse extends SuccessResponse<CredentialListData[]> {}
 export interface MasterVerificationResponse extends SuccessResponse<MasterVerificationData> {}
-export interface VerifyMasterResponse extends SuccessResponse<string> {}
+export interface VerifyMasterResponse extends SuccessResponse<VerifyMasterData> {}
 export interface DeleteCredentialResponse extends SuccessResponse<string> {}
 export interface PasswordResponse extends SuccessResponse<PasswordData> {}
 
 export class CredentialsService {
     private static readonly BASE_URL = '/api/credentials';
 
-    static async verifyMasterPassword(master_password: string): Promise<string> {
+    static async verifyMasterPassword(master_password: string): Promise<VerifyMasterData> {
         const response = await axios.post<VerifyMasterResponse>(`${this.BASE_URL}/verify-master`, { master_password });
         return response.data.data;
     }
@@ -101,8 +102,8 @@ export class CredentialsService {
         return response.data.data;
     }
 
-    static async getById(id: number, master_password: string): Promise<CredentialData> {
-        const response = await axios.post<CredentialResponse>(`${this.BASE_URL}/${id}`, { master_password });
+    static async getById(id: number, session_token: string): Promise<CredentialData> {
+        const response = await axios.post<CredentialResponse>(`${this.BASE_URL}/${id}`, { session_token });
         return response.data.data;
     }
 
@@ -121,8 +122,8 @@ export class CredentialsService {
         return response.data.data;
     }
 
-    static async getPassword(id: number, master_password: string): Promise<string> {
-        const response = await axios.post<PasswordResponse>(`${this.BASE_URL}/${id}/password`, { master_password });
+    static async getPassword(id: number, session_token: string): Promise<string> {
+        const response = await axios.post<PasswordResponse>(`${this.BASE_URL}/${id}/password`, { session_token });
         return response.data.data.password;
     }
 
