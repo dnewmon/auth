@@ -662,12 +662,14 @@ class TestChangePasswordWithMfa:
     def test_change_password_success_with_credentials(self, client):
         """Test successful password change with existing credentials."""
         with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user, \
              patch('app.utils.routes.db.session') as mock_db_session, \
              patch('app.utils.routes.MasterVerificationManager') as mock_master_mgr, \
              patch('app.utils.routes.current_app') as mock_app:
             
             # Setup mock user with credentials
             mock_user.id = 1
+            mock_user.is_authenticated = True
             mock_user.credentials = [Mock(), Mock()]  # Has credentials
             mock_user.otp_enabled = False
             mock_user.email_mfa_enabled = False
@@ -696,6 +698,7 @@ class TestChangePasswordWithMfa:
     def test_change_password_success_with_otp(self, client):
         """Test successful password change with OTP verification."""
         with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user, \
              patch('app.utils.routes.db.session') as mock_db_session, \
              patch('app.utils.routes.MasterVerificationManager') as mock_master_mgr, \
              patch('app.utils.routes.pyotp.TOTP') as mock_totp, \
@@ -703,6 +706,7 @@ class TestChangePasswordWithMfa:
             
             # Setup mock user with OTP enabled
             mock_user.id = 1
+            mock_user.is_authenticated = True
             mock_user.credentials = []
             mock_user.otp_enabled = True
             mock_user.email_mfa_enabled = False
@@ -736,6 +740,7 @@ class TestChangePasswordWithMfa:
     def test_change_password_success_with_email_mfa(self, client):
         """Test successful password change with email MFA verification."""
         with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user, \
              patch('app.utils.routes.db.session') as mock_db_session, \
              patch('app.utils.routes.MasterVerificationManager') as mock_master_mgr, \
              patch('app.utils.routes.MfaVerificationCode') as mock_code_model, \
@@ -743,6 +748,7 @@ class TestChangePasswordWithMfa:
             
             # Setup mock user with email MFA enabled
             mock_user.id = 1
+            mock_user.is_authenticated = True
             mock_user.credentials = []
             mock_user.otp_enabled = False
             mock_user.email_mfa_enabled = True
@@ -775,22 +781,32 @@ class TestChangePasswordWithMfa:
 
     def test_change_password_missing_current_password(self, client):
         """Test password change with missing current password."""
-        response = client.post('/api/utils/change-password',
-                             json={"new_password": "newpassword456"},
-                             content_type='application/json')
-        
-        assert response.status_code == 400
-        response_data = json.loads(response.data)
-        assert response_data["status"] == "error"
-        assert "Current password is required" in response_data["message"]
+        with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user:
+
+            mock_user.id = 1
+            mock_user.is_authenticated = True
+            response = client.post('/api/utils/change-password',
+                                 json={"new_password": "newpassword456"},
+                                 content_type='application/json')
+
+            assert response.status_code == 400
+            response_data = json.loads(response.data)
+            assert response_data["status"] == "error"
+            assert "Current password is required" in response_data["message"]
 
     def test_change_password_invalid_current_password(self, client):
         """Test password change with invalid current password."""
         with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user, \
              patch('app.utils.routes.current_app') as mock_app:
             
             mock_user.id = 1
-            mock_user.check_password.return_value = False
+            mock_user.is_authenticated = True
+            mock_user.otp_enabled = False
+            mock_user.email_mfa_enabled = False
+            mock_user.check_password = Mock(return_value=False)
+            mock_user.set_password = Mock()
             mock_app.logger = Mock()
             
             response = client.post('/api/utils/change-password',
@@ -807,8 +823,10 @@ class TestChangePasswordWithMfa:
 
     def test_change_password_otp_required_missing(self, client):
         """Test password change when OTP is required but not provided."""
-        with patch('app.utils.routes.current_user') as mock_user:
+        with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user:
             mock_user.id = 1
+            mock_user.is_authenticated = True
             mock_user.otp_enabled = True
             mock_user.email_mfa_enabled = False
             mock_user.check_password.return_value = True
@@ -828,10 +846,12 @@ class TestChangePasswordWithMfa:
     def test_change_password_invalid_otp(self, client):
         """Test password change with invalid OTP token."""
         with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user, \
              patch('app.utils.routes.pyotp.TOTP') as mock_totp, \
              patch('app.utils.routes.current_app') as mock_app:
             
             mock_user.id = 1
+            mock_user.is_authenticated = True
             mock_user.otp_enabled = True
             mock_user.otp_secret = "base32secret"
             mock_user.check_password.return_value = True
@@ -862,12 +882,14 @@ class TestRequestPasswordChangeCode:
     def test_request_code_success(self, client):
         """Test successful email code request for password change."""
         with patch('app.utils.routes.current_user') as mock_user, \
+             patch('flask_login.utils._get_user', return_value=mock_user) as mock_get_user, \
              patch('app.utils.routes.MfaVerificationCode') as mock_code_model, \
              patch('app.utils.routes.render_template') as mock_render, \
              patch('app.utils.routes.send_email') as mock_send_email, \
              patch('app.utils.routes.current_app') as mock_app:
             
             mock_user.id = 1
+            mock_user.is_authenticated = True
             mock_user.email = "user@example.com"
             mock_user.email_mfa_enabled = True
             
