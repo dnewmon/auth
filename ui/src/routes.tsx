@@ -10,7 +10,6 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import AccountRecoveryPage from './pages/AccountRecoveryPage';
 
 export const site_routes: RouteObject[] = [
     {
@@ -48,10 +47,6 @@ export const site_routes: RouteObject[] = [
             {
                 path: 'account',
                 element: <MfaManagement />,
-            },
-            {
-                path: 'account/recovery',
-                element: <AccountRecoveryPage />,
             },
             {
                 path: 'forgot-password',

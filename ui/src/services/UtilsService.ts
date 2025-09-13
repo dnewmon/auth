@@ -28,6 +28,13 @@ export interface ImportCredentialsRequest {
     session_token: string;
 }
 
+export interface ChangePasswordRequest {
+    current_password: string;
+    new_password: string;
+    otp_token?: string;
+    verification_code?: string;
+}
+
 // Response data interfaces
 export interface MessageData {
     message: string;
@@ -47,11 +54,17 @@ export interface ExportData {
     message?: string;
 }
 
+export interface ChangePasswordData extends MessageData {
+    session_token: string;
+    credentials_preserved: boolean;
+}
+
 // Response interfaces
 export interface MessageResponse extends SuccessResponse<MessageData> {}
 export interface ResetPasswordResponse extends SuccessResponse<ResetPasswordData> {}
 export interface RecoverWithKeyResponse extends SuccessResponse<RecoverWithKeyData> {}
 export interface ExportResponse extends SuccessResponse<ExportData> {}
+export interface ChangePasswordResponse extends SuccessResponse<ChangePasswordData> {}
 
 export class UtilsService {
     private static readonly BASE_URL = '/api/utils';
@@ -94,6 +107,16 @@ export class UtilsService {
 
     static async importCredentials(request: ImportCredentialsRequest): Promise<MessageData> {
         const response = await axios.post<MessageResponse>(`${this.BASE_URL}/import`, request);
+        return response.data.data;
+    }
+
+    static async changePassword(request: ChangePasswordRequest): Promise<ChangePasswordData> {
+        const response = await axios.post<ChangePasswordResponse>(`${this.BASE_URL}/change-password`, request);
+        return response.data.data;
+    }
+
+    static async requestPasswordChangeCode(): Promise<MessageData> {
+        const response = await axios.post<MessageResponse>(`${this.BASE_URL}/request-password-change-code`);
         return response.data.data;
     }
 }

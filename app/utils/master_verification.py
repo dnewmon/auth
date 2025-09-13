@@ -171,3 +171,21 @@ class MasterVerificationManager:
             verification["timestamp"] = int(time.time())
             session[cls.SESSION_KEY] = verification
             session.modified = True
+    
+    @classmethod
+    def get_master_key_from_password(cls, password: str, user) -> bytes:
+        """
+        Get the master encryption key directly from the user's password.
+        This is used during password changes to preserve credentials.
+        
+        Args:
+            password: The user's password
+            user: User object
+            
+        Returns:
+            The master encryption key
+            
+        Raises:
+            ValueError: If password is incorrect or master key cannot be retrieved
+        """
+        return user.get_master_key(password)

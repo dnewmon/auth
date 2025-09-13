@@ -16,9 +16,12 @@ from ..models.password_reset_token import PasswordResetToken
 from .responses import success_response, error_response
 from .email import send_email
 from ..models.credential import Credential
+from ..models.mfa_verification_code import MfaVerificationCode
 from .encryption import derive_key, decrypt_data, encrypt_data
+from .master_verification import MasterVerificationManager
 from .. import limiter
 from ..models.config import get_config_value
+import pyotp
 
 @utils_bp.route("/health", methods=["GET"])
 def health():
@@ -368,3 +371,142 @@ def import_credentials():
         db.session.rollback()
         current_app.logger.error(f"Error during credential import: {e}", exc_info=True)
         return error_response("Failed to import credentials.", 500)
+
+
+@utils_bp.route("/change-password", methods=["POST"])
+@login_required
+@limiter.limit("5 per hour")
+def change_password():
+    """
+    Changes the user's password with MFA verification when enabled.
+    Requires current password and MFA verification (OTP or email).
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("Request data is required.", 400)
+    
+    current_password = data.get("current_password")
+    new_password = data.get("new_password")
+    otp_token = data.get("otp_token")
+    verification_code = data.get("verification_code")
+    
+    # Validate required fields
+    if not current_password:
+        return error_response("Current password is required.", 400)
+    
+    if not new_password:
+        return error_response("New password is required.", 400)
+    
+    # Basic password complexity check
+    min_length = get_config_value("MIN_PASSWORD_LENGTH")
+    if len(new_password) < min_length:
+        return error_response(f"New password must be at least {min_length} characters long.", 400)
+    
+    user = current_user
+    
+    # Verify current password
+    if not user.check_password(current_password):
+        current_app.logger.warning(f"Invalid current password attempt for user {user.id}")
+        return error_response("Invalid current password.", 401)
+    
+    # Check MFA requirements and verify accordingly
+    try:
+        # Priority: OTP > Email MFA > No MFA
+        if user.otp_enabled:
+            if not otp_token:
+                return error_response("OTP token is required when OTP authentication is enabled.", 400)
+            
+            # Verify OTP token
+            totp = pyotp.TOTP(user.otp_secret)
+            if not totp.verify(otp_token):
+                current_app.logger.warning(f"Invalid OTP token for password change, user {user.id}")
+                return error_response("Invalid OTP token.", 401)
+                
+        elif user.email_mfa_enabled:
+            if not verification_code:
+                return error_response("Email verification code is required when email MFA is enabled.", 400)
+            
+            # Find and validate email verification code
+            code_entry = MfaVerificationCode.find_valid_code(user.id, verification_code, "password_change")
+            if not code_entry:
+                current_app.logger.warning(f"Invalid email MFA code for password change, user {user.id}")
+                return error_response("Invalid or expired email verification code.", 401)
+            
+            # Mark verification code as used
+            code_entry.mark_as_used()
+        
+        # All validations passed, proceed with password change
+        
+        # Check if user has credentials and preserve them
+        has_credentials = len(user.credentials) > 0
+        credentials_preserved = True
+        
+        try:
+            if has_credentials:
+                # Use the new method to change password while preserving credentials
+                user.change_password_preserving_keys(current_password, new_password)
+                current_app.logger.info(f"Preserved {len(user.credentials)} credentials during password change for user {user.id}")
+            else:
+                # No credentials to preserve, just change password normally
+                user.set_password(new_password)
+            
+            # Generate new session token for current session
+            session_token = MasterVerificationManager.verify_and_store(new_password)
+            
+        except ValueError as e:
+            current_app.logger.error(f"Error during password change for user {user.id}: {e}")
+            credentials_preserved = False
+            # Fallback to simple password change
+            user.set_password(new_password)
+            session_token = MasterVerificationManager.verify_and_store(new_password)
+        
+        db.session.commit()
+        
+        current_app.logger.info(f"Password changed successfully for user {user.id}")
+        
+        response_data = {
+            "message": "Password changed successfully.",
+            "session_token": session_token,
+            "credentials_preserved": credentials_preserved
+        }
+        
+        if has_credentials and not credentials_preserved:
+            response_data["message"] = "Password changed successfully, but some credentials may be inaccessible."
+        
+        return success_response(response_data)
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error during password change for user {current_user.id}: {e}", exc_info=True)
+        return error_response("An unexpected error occurred while changing password.", 500)
+
+
+@utils_bp.route("/request-password-change-code", methods=["POST"])
+@login_required
+@limiter.limit("3 per hour")
+def request_password_change_code():
+    """
+    Sends an email verification code for password change when email MFA is enabled.
+    """
+    user = current_user
+    
+    # Only send codes if email MFA is enabled
+    if not user.email_mfa_enabled:
+        return error_response("Email MFA is not enabled for this account.", 400)
+    
+    try:
+        # Generate verification code for password change
+        verification_code = MfaVerificationCode.create_for_user(user.id, 'password_change')
+        
+        # Send verification code email
+        email_html = render_template('email/password_change_code.html', 
+                                     user=user, 
+                                     verification_code=verification_code.code)
+        send_email(user.email, "Password Change Verification Code", email_html)
+        
+        current_app.logger.info(f"Sent password change verification code to {user.email}")
+        return success_response({"message": "Verification code sent to your email. Please check your inbox."})
+        
+    except Exception as e:
+        current_app.logger.error(f"Failed to send password change verification code: {e}", exc_info=True)
+        return error_response("Failed to send verification code. Please try again later.", 500)

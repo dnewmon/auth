@@ -244,3 +244,33 @@ class User(db.Model, UserMixin):
             db.session.add(recovery_key)
 
         return recovery_keys
+    
+    def change_password_preserving_keys(self, current_password, new_password):
+        """
+        Change password while preserving access to encrypted credentials.
+        Decrypts MEK with current password, then re-encrypts with new password.
+        
+        Args:
+            current_password: Current password to verify and decrypt the MEK
+            new_password: New password to set
+            
+        Returns:
+            bool: True if password change was successful
+            
+        Raises:
+            ValueError: If current password is invalid or operation fails
+        """
+        # Verify current password and get master key
+        try:
+            master_key = self.get_master_key(current_password)
+        except ValueError as e:
+            raise ValueError(f"Cannot change password: {str(e)}")
+        
+        # Set new password (this will increment session version)
+        self.set_password(new_password)
+        
+        # Re-encrypt master key with new password
+        from ..utils.encryption import encrypt_master_key
+        self.encrypted_master_key = encrypt_master_key(master_key, new_password, self.encryption_salt)
+        
+        return True

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Card, Button, Spinner, Modal, Form, Alert, Row, Col } from 'react-bootstrap';
+import { Card, Button, Spinner, Modal, Form, Alert, Row, Col, Container } from 'react-bootstrap';
 import { useApi, ApiErrorFallback, useDebouncedEffect, ApiState, ApiSuspense } from '../react-utilities';
 import { MfaService } from '../services/MfaService';
 import { AuthService } from '../services/AuthService';
-import { UtilsService } from '../services/UtilsService';
+import { UtilsService, ChangePasswordRequest } from '../services/UtilsService';
 import OtpSetup from '../components/mfa/OtpSetup';
 import EmailSetup from '../components/mfa/EmailSetup';
 
@@ -22,6 +22,16 @@ export default function MfaManagement() {
     });
     const [recoveryKeyCopied, setRecoveryKeyCopied] = useState(false);
     const [directRecoverySuccess, setDirectRecoverySuccess] = useState(false);
+
+    // Password change states
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [otpToken, setOtpToken] = useState('');
+    const [verificationCode, setVerificationCode] = useState('');
+    const [passwordChangeError, setPasswordChangeError] = useState('');
+    const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
+    const [emailCodeSent, setEmailCodeSent] = useState(false);
 
     const [loadMfaStatus, mfaStatus, mfaStatusState, mfaStatusError] = useApi(async () => {
         const response = await MfaService.getMfaStatus();
@@ -57,6 +67,45 @@ export default function MfaManagement() {
     const [resendVerification, resendVerificationResponse, resendVerificationState, resendVerificationError] = useApi(async () => {
         const response = await MfaService.resendEmailVerification();
         return response;
+    });
+
+    // Password change handler
+    const [handlePasswordChange, _passwordChangeResponse, passwordChangeState, passwordChangeApiError] = useApi(async () => {
+        if (newPassword !== confirmPassword) {
+            setPasswordChangeError('Passwords do not match');
+            return;
+        }
+        setPasswordChangeError('');
+
+        const request: ChangePasswordRequest = {
+            current_password: currentPassword,
+            new_password: newPassword,
+        };
+
+        if (mfaStatus?.otp_enabled) {
+            if (!otpToken) {
+                setPasswordChangeError('OTP token is required');
+                return;
+            }
+            request.otp_token = otpToken;
+        } else if (mfaStatus?.email_mfa_enabled) {
+            if (!verificationCode) {
+                setPasswordChangeError('Email verification code is required');
+                return;
+            }
+            request.verification_code = verificationCode;
+        }
+
+        const result = await UtilsService.changePassword(request);
+        setPasswordChangeSuccess(true);
+        return result;
+    });
+
+    // Email code request handler
+    const [handleRequestCode, _codeResponse, codeState, codeError] = useApi(async () => {
+        const result = await UtilsService.requestPasswordChangeCode();
+        setEmailCodeSent(true);
+        return result;
     });
 
     // Load MFA and recovery key status when component mounts
@@ -104,138 +153,269 @@ export default function MfaManagement() {
 
             <ApiErrorFallback api_error={mfaStatusError || resendVerificationError} />
 
-            <ApiSuspense api_states={[mfaStatusState]} suspense={<Spinner />}>
-                <Card className="mb-4">
-                    <Card.Body>
-                        <Card.Title>Authenticator App (OTP)</Card.Title>
-                        <Card.Text>Use an authenticator app like Google Authenticator or Authy to generate time-based one-time passwords.</Card.Text>
-                        {mfaStatus?.otp_enabled ? (
-                            <Button variant="danger" onClick={() => setShowOtpSetup(true)}>
-                                Disable OTP
-                            </Button>
-                        ) : (
-                            <Button variant="primary" onClick={() => setShowOtpSetup(true)}>
-                                Enable OTP
-                            </Button>
-                        )}
-                    </Card.Body>
-                </Card>
-            </ApiSuspense>
-
-            <Card className="mb-5">
-                <Card.Body>
-                    <Card.Title>Email Multi-Factor Authentication</Card.Title>
-                    <Card.Text>Receive verification codes via email for login and account changes.</Card.Text>
-                    
-                    <div className="mb-3">
-                        <strong>Email Status: </strong>
-                        {mfaStatus?.email_verified ? (
-                            <span className="text-success">
-                                <i className="bi bi-check-circle-fill me-1"></i>
-                                Verified
-                            </span>
-                        ) : (
-                            <span className="text-warning">
-                                <i className="bi bi-exclamation-triangle-fill me-1"></i>
-                                Not Verified
-                            </span>
-                        )}
-                        
-                        {!mfaStatus?.email_verified && (
-                            <div className="mt-2">
-                                <ApiSuspense api_states={[resendVerificationState]} suspense={<Button variant="outline-secondary" size="sm" disabled>Sending...</Button>}>
-                                    <Button 
-                                        variant="outline-secondary" 
-                                        size="sm" 
-                                        onClick={resendVerification}
-                                        className="me-2"
-                                    >
-                                        Resend Verification Email
+            <Row>
+                <Col md={6}>
+                    <ApiSuspense api_states={[mfaStatusState]} suspense={<Spinner />}>
+                        <Card className="mb-4">
+                            <Card.Body>
+                                <Card.Title>Authenticator App (OTP)</Card.Title>
+                                <Card.Text>Use an authenticator app like Google Authenticator or Authy to generate time-based one-time passwords.</Card.Text>
+                                {mfaStatus?.otp_enabled ? (
+                                    <Button variant="danger" onClick={() => setShowOtpSetup(true)}>
+                                        Disable OTP
                                     </Button>
-                                </ApiSuspense>
-                                {resendVerificationResponse && (
-                                    <small className="text-success">
-                                        <i className="bi bi-check-circle me-1"></i>
-                                        Verification email sent!
-                                    </small>
+                                ) : (
+                                    <Button variant="primary" onClick={() => setShowOtpSetup(true)}>
+                                        Enable OTP
+                                    </Button>
+                                )}
+                            </Card.Body>
+                        </Card>
+                    </ApiSuspense>
+                </Col>
+                <Col md={6}>
+                    <Card className="mb-4">
+                        <Card.Body>
+                            <Card.Title>Email Multi-Factor Authentication</Card.Title>
+                            <Card.Text>Receive verification codes via email for login and account changes.</Card.Text>
+
+                            <div className="mb-3">
+                                <strong>Email Status: </strong>
+                                {mfaStatus?.email_verified ? (
+                                    <span className="text-success">
+                                        <i className="bi bi-check-circle-fill me-1"></i>
+                                        Verified
+                                    </span>
+                                ) : (
+                                    <span className="text-warning">
+                                        <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                                        Not Verified
+                                    </span>
+                                )}
+
+                                {!mfaStatus?.email_verified && (
+                                    <div className="mt-2">
+                                        <ApiSuspense
+                                            api_states={[resendVerificationState]}
+                                            suspense={
+                                                <Button variant="outline-secondary" size="sm" disabled>
+                                                    Sending...
+                                                </Button>
+                                            }
+                                        >
+                                            <Button variant="outline-secondary" size="sm" onClick={resendVerification} className="me-2">
+                                                Resend Verification Email
+                                            </Button>
+                                        </ApiSuspense>
+                                        {resendVerificationResponse && (
+                                            <small className="text-success">
+                                                <i className="bi bi-check-circle me-1"></i>
+                                                Verification email sent!
+                                            </small>
+                                        )}
+                                    </div>
                                 )}
                             </div>
-                        )}
-                    </div>
 
-                    {!mfaStatus?.email_verified && (
-                        <Alert variant="warning" className="mb-3">
-                            <small>Email verification required before enabling email MFA.</small>
-                        </Alert>
-                    )}
-                    {mfaStatus?.email_mfa_enabled ? (
-                        <Button variant="danger" onClick={() => setShowEmailSetup(true)}>
-                            Disable Email MFA
-                        </Button>
-                    ) : (
-                        <Button 
-                            variant="primary" 
-                            onClick={() => setShowEmailSetup(true)}
-                            disabled={!mfaStatus?.email_verified}
-                        >
-                            Enable Email MFA
-                        </Button>
-                    )}
-                </Card.Body>
-            </Card>
+                            {!mfaStatus?.email_verified && (
+                                <Alert variant="warning" className="mb-3">
+                                    <small>Email verification required before enabling email MFA.</small>
+                                </Alert>
+                            )}
+                            {mfaStatus?.email_mfa_enabled ? (
+                                <Button variant="danger" onClick={() => setShowEmailSetup(true)}>
+                                    Disable Email MFA
+                                </Button>
+                            ) : (
+                                <Button variant="primary" onClick={() => setShowEmailSetup(true)} disabled={!mfaStatus?.email_verified}>
+                                    Enable Email MFA
+                                </Button>
+                            )}
+                        </Card.Body>
+                    </Card>
+                </Col>
+            </Row>
+
+            <h2 className="mb-3">Password Management</h2>
+
+            <Container className="mt-5">
+                <Row className="justify-content-center">
+                    <Col md={8} lg={6}>
+                        <ApiErrorFallback api_error={passwordChangeApiError || codeError} />
+
+                        {!passwordChangeSuccess ? (
+                            <Card className="mb-5">
+                                <Card.Body>
+                                    <Card.Title>Change Password</Card.Title>
+                                    <Card.Text>
+                                        Change your password while preserving access to your stored credentials.
+                                        {mfaStatus?.otp_enabled || mfaStatus?.email_mfa_enabled ? ' Multi-factor authentication is required.' : ''}
+                                    </Card.Text>
+
+                                    <Form
+                                        onSubmit={(e) => {
+                                            e.preventDefault();
+                                            handlePasswordChange();
+                                        }}
+                                    >
+                                        <Form.Group className="mb-3">
+                                            <Form.Label>Current Password</Form.Label>
+                                            <Form.Control
+                                                type="password"
+                                                value={currentPassword}
+                                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                                required
+                                                placeholder="Enter your current password"
+                                            />
+                                        </Form.Group>
+
+                                        <Form.Group className="mb-3">
+                                            <Form.Label>New Password</Form.Label>
+                                            <Form.Control
+                                                type="password"
+                                                value={newPassword}
+                                                onChange={(e) => setNewPassword(e.target.value)}
+                                                required
+                                                placeholder="Enter new password"
+                                                minLength={8}
+                                            />
+                                        </Form.Group>
+
+                                        <Form.Group className="mb-3">
+                                            <Form.Label>Confirm New Password</Form.Label>
+                                            <Form.Control
+                                                type="password"
+                                                value={confirmPassword}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                                required
+                                                placeholder="Confirm new password"
+                                                minLength={8}
+                                            />
+                                            {passwordChangeError && <Form.Text className="text-danger">{passwordChangeError}</Form.Text>}
+                                        </Form.Group>
+
+                                        {/* MFA Section */}
+                                        {mfaStatus?.otp_enabled && (
+                                            <Form.Group className="mb-3">
+                                                <Form.Label>Authenticator Code</Form.Label>
+                                                <Form.Control
+                                                    type="text"
+                                                    value={otpToken}
+                                                    onChange={(e) => setOtpToken(e.target.value)}
+                                                    required
+                                                    placeholder="Enter 6-digit code from your authenticator app"
+                                                    maxLength={6}
+                                                />
+                                            </Form.Group>
+                                        )}
+
+                                        {mfaStatus?.email_mfa_enabled && !mfaStatus?.otp_enabled && (
+                                            <>
+                                                <Form.Group className="mb-3">
+                                                    <Form.Label>Email Verification Code</Form.Label>
+                                                    <div className="d-flex gap-2">
+                                                        <Form.Control
+                                                            type="text"
+                                                            value={verificationCode}
+                                                            onChange={(e) => setVerificationCode(e.target.value)}
+                                                            required
+                                                            placeholder="Enter 6-digit code from email"
+                                                            maxLength={6}
+                                                        />
+                                                        <Button
+                                                            variant="outline-primary"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                handleRequestCode();
+                                                            }}
+                                                            disabled={codeState === ApiState.Loading}
+                                                        >
+                                                            {emailCodeSent ? 'Resend' : 'Send Code'}
+                                                        </Button>
+                                                    </div>
+                                                    {emailCodeSent && <Form.Text className="text-success">Verification code sent to your email address.</Form.Text>}
+                                                </Form.Group>
+                                            </>
+                                        )}
+
+                                        <ApiSuspense
+                                            api_states={[passwordChangeState]}
+                                            suspense={
+                                                <Button variant="primary" type="submit" className="w-100" disabled>
+                                                    Changing Password...
+                                                </Button>
+                                            }
+                                        >
+                                            <Button variant="primary" type="submit" className="w-100">
+                                                Change Password
+                                            </Button>
+                                        </ApiSuspense>
+                                    </Form>
+                                </Card.Body>
+                            </Card>
+                        ) : (
+                            <Alert variant="success" className="mb-5">
+                                <Alert.Heading>Password Changed Successfully</Alert.Heading>
+                                <p>Your password has been updated and your credentials have been preserved.</p>
+                            </Alert>
+                        )}
+                    </Col>
+                </Row>
+            </Container>
 
             <h2 className="mb-3">Account Recovery</h2>
 
             <ApiErrorFallback api_error={recoveryKeyStatusError} />
 
-            <ApiSuspense api_states={[recoveryKeyStatusState]} suspense={<Spinner />}>
-                <Card className="mb-4">
-                    <Card.Body>
-                        <Card.Title>Recovery Keys</Card.Title>
-                        <Card.Text>Recovery keys allow you to regain access to your account and stored passwords if you forget your master password.</Card.Text>
+            <Row>
+                <Col md={6}>
+                    <ApiSuspense api_states={[recoveryKeyStatusState]} suspense={<Spinner />}>
+                        <Card className="mb-4">
+                            <Card.Body>
+                                <Card.Title>Recovery Keys</Card.Title>
+                                <Card.Text>Recovery keys allow you to regain access to your account and stored passwords if you forget your master password.</Card.Text>
 
-                        {recoveryKeyStatus && (
-                            <div className="mb-3">
-                                <strong>Status: </strong>
-                                {recoveryKeyStatus.has_keys ? (
-                                    <span className="text-success">
-                                        You have {recoveryKeyStatus.total_keys} recovery keys, with {recoveryKeyStatus.unused_keys} unused keys.
-                                    </span>
-                                ) : (
-                                    <span className="text-danger">No recovery keys found. Your account is at risk if you forget your password.</span>
+                                {recoveryKeyStatus && (
+                                    <div className="mb-3">
+                                        <strong>Status: </strong>
+                                        {recoveryKeyStatus.has_keys ? (
+                                            <span className="text-success">
+                                                You have {recoveryKeyStatus.total_keys} recovery keys, with {recoveryKeyStatus.unused_keys} unused keys.
+                                            </span>
+                                        ) : (
+                                            <span className="text-danger">No recovery keys found. Your account is at risk if you forget your password.</span>
+                                        )}
+                                    </div>
                                 )}
-                            </div>
-                        )}
 
-                        <Row>
-                            <Col>
                                 <Button variant="primary" onClick={() => setShowRegenerateKeysModal(true)} className="me-2">
                                     Generate New Recovery Keys
                                 </Button>
-                            </Col>
-                        </Row>
-                    </Card.Body>
-                </Card>
-
-                <Card className="mb-4">
-                    <Card.Body>
-                        <Card.Title>Direct Recovery</Card.Title>
-                        <Card.Text>Use a recovery key to reset your password and preserve access to your stored credentials without email verification.</Card.Text>
-                        <Button variant="secondary" onClick={() => setShowDirectRecoveryModal(true)}>
-                            Recover Using Key
-                        </Button>
-                    </Card.Body>
-                </Card>
-            </ApiSuspense>
+                            </Card.Body>
+                        </Card>
+                    </ApiSuspense>
+                </Col>
+                <Col md={6}>
+                    <Card className="mb-4">
+                        <Card.Body>
+                            <Card.Title>Direct Recovery</Card.Title>
+                            <Card.Text>Use a recovery key to reset your password and preserve access to your stored credentials without email verification.</Card.Text>
+                            <Button variant="secondary" onClick={() => setShowDirectRecoveryModal(true)}>
+                                Recover Using Key
+                            </Button>
+                        </Card.Body>
+                    </Card>
+                </Col>
+            </Row>
 
             {/* Existing Modals */}
             <OtpSetup otp_enabled={mfaStatus?.otp_enabled || false} show={showOtpSetup} onClose={() => setShowOtpSetup(false)} onSuccess={handleOtpSuccess} />
-            <EmailSetup 
-                email_mfa_enabled={mfaStatus?.email_mfa_enabled || false} 
+            <EmailSetup
+                email_mfa_enabled={mfaStatus?.email_mfa_enabled || false}
                 email_verified={mfaStatus?.email_verified || false}
-                show={showEmailSetup} 
-                onClose={() => setShowEmailSetup(false)} 
-                onSuccess={loadMfaStatus} 
+                show={showEmailSetup}
+                onClose={() => setShowEmailSetup(false)}
+                onSuccess={loadMfaStatus}
             />
 
             {/* Regenerate Recovery Keys Modal */}

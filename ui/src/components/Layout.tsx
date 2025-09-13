@@ -102,10 +102,10 @@ function LayoutContent() {
                             {username && (
                                 <>
                                     <Nav.Link as={Link} to="/credentials">
-                                        Credentials
+                                        <i className="bi bi-key-fill"></i> Credentials
                                     </Nav.Link>
                                     <Nav.Link as={Link} to="/account">
-                                        Account Settings
+                                        <i className="bi bi-gear-fill"></i> Settings
                                     </Nav.Link>
                                 </>
                             )}
